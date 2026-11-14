@@ -51,6 +51,10 @@ def main():
                           headers={"Access-Control-Allow-Origin": "*"})
         page.route("https://api.github.com/**", gh)
 
+        manifest = json.loads((ROOT / "manifest.webmanifest").read_text())
+        icons = [i["src"] for i in manifest["icons"]] + ["icons/apple-touch-icon.png", "icons/favicon-32.png"]
+        for src in icons:
+            assert (ROOT / src).is_file(), f"Icon fehlt: {src}"
         page.goto(base)
         assert "Token" in page.text_content("#status"), page.text_content("#status")
         page.click("#btn-settings")
