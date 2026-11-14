@@ -1,0 +1,50 @@
+# FitnessHelperApp
+
+Schlanke Web-App (iPhone/iPad, Desktop) zur Anzeige der eigenen Fitnessdaten.
+
+- **Enthält keine Daten und keine Tokens.** Die Daten liegen im privaten Repo
+  `FitnessHelperAppData` und werden zur Laufzeit über die GitHub-API gelesen.
+- Der Lese-Token wird nur im Browser des Geräts gespeichert (optional nur für
+  die Sitzung) und ausschließlich an `api.github.com` gesendet (per
+  Content-Security-Policy erzwungen).
+- Kein Build-Schritt, keine Abhängigkeiten: reines HTML, CSS und JavaScript.
+
+## Stand
+
+Hülle: lädt `data/sample/workouts.sample.json` (oder eine andere Datei aus `data/`)
+und zeigt Kennzahlen und die Liste der Einheiten.
+Ausbau: Dashboard (Woche/Monat, Trends) → Trainingsplan → Ziele.
+
+## Einrichten
+
+1. **Lese-Token erstellen:** GitHub → Settings → Developer settings →
+   *Fine-grained personal access tokens* → *Generate new token*
+   - Repository access: *Only select repositories* → `FitnessHelperAppData`
+   - Permissions: *Contents* → **Read-only** (sonst nichts)
+   - Ablaufdatum setzen (z. B. 1 Jahr)
+2. **App öffnen:** über GitHub Pages (Settings → Pages → Branch `main`, Ordner `/`)
+   unter `https://nechromus.github.io/FitnessHelperApp/` – oder lokal:
+   ```bash
+   python3 -m http.server 8000   # dann http://localhost:8000
+   ```
+3. ⚙︎ antippen, Token einfügen, *Speichern & laden*.
+4. Auf dem iPhone/iPad: Teilen → *Zum Home-Bildschirm*.
+
+Für die echten Daten im Feld *Datei* `data/workouts.json` eintragen.
+
+## Aufbau
+
+```
+index.html            Seite, Content-Security-Policy
+src/data.js           Laden (GitHub-API), Prüfen, Zusammenfassen – ohne DOM, testbar
+src/app.js            Oberfläche
+src/style.css         Stil (hell/dunkel, Handy zuerst)
+tests/                node-Tests und Browser-Smoke-Test
+```
+
+## Tests
+
+```bash
+node --test tests/data.test.mjs
+python3 tests/smoke_browser.py          # braucht Playwright + Chrome
+```

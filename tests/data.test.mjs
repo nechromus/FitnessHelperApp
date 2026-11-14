@@ -1,0 +1,51 @@
+// Aufruf: node --test tests/
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { contentsUrl, loadFromGitHub, parseDoc, summarize, fmtDuration, fmtKm, fmtDate, DEFAULTS } from "../src/data.js";
+
+const doc = { schema_version: 1, count: 2, workouts: [
+  { id: "strava:1", type: "run", start_local: "2026-09-06T07:30:12", start_utc: "2026-09-06T05:30:12Z", duration_s: 2410, distance_m: 6120.4 },
+  { id: "strava:2", type: "strength", start_local: "2026-09-12T20:05:00", start_utc: "2026-09-12T18:05:00Z", duration_s: 2700, distance_m: 0 },
+] };
+
+test("URL zeigt nur auf api.github.com", () => {
+  assert.equal(contentsUrl(DEFAULTS),
+    "https://api.github.com/repos/nechromus/FitnessHelperAppData/contents/data/sample/workouts.sample.json?ref=main");
+  assert.throws(() => contentsUrl({ ...DEFAULTS, repo: "evil.com/x/y" }));
+  assert.throws(() => contentsUrl({ ...DEFAULTS, path: "../secrets.json" }));
+  assert.throws(() => contentsUrl({ ...DEFAULTS, path: "data/x.txt" }));
+});
+
+test("Token wird als Bearer an GitHub gesendet", async () => {
+  let seen;
+  const fake = async (url, opts) => { seen = { url, opts }; return { ok: true, status: 200, text: async () => JSON.stringify(doc) }; };
+  const d = await loadFromGitHub(DEFAULTS, "tok123", fake);
+  assert.equal(d.workouts.length, 2);
+  assert.ok(seen.url.startsWith("https://api.github.com/"));
+  assert.equal(seen.opts.headers.Authorization, "Bearer tok123");
+});
+
+test("Fehlermeldungen bei 401/404", async () => {
+  const mk = (status) => async () => ({ ok: false, status, text: async () => "" });
+  await assert.rejects(loadFromGitHub(DEFAULTS, "x", mk(401)), /401/);
+  await assert.rejects(loadFromGitHub(DEFAULTS, "x", mk(404)), /404/);
+});
+
+test("parseDoc prüft Schema", () => {
+  assert.throws(() => parseDoc("kein json"), /JSON/);
+  assert.throws(() => parseDoc("{}"), /workouts/);
+  assert.throws(() => parseDoc('{"schema_version":2,"workouts":[]}'), /Schema-Version/);
+});
+
+test("Zusammenfassung und Formatierung", () => {
+  const s = summarize(doc.workouts);
+  assert.equal(s.count, 2);
+  assert.equal(s.from, "2026-09-06");
+  assert.equal(s.to, "2026-09-12");
+  assert.equal(s.byType.run, 1);
+  assert.equal(fmtDuration(2410), "40 min");
+  assert.equal(fmtDuration(5110), "1 h 25 min");
+  assert.equal(fmtKm(6120.4), "6,1 km");
+  assert.equal(fmtKm(0), "–");
+  assert.equal(fmtDate("2026-09-06T07:30:12"), "06.09.2026");
+});
