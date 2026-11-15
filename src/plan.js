@@ -66,7 +66,7 @@ const ORDER = ["kraft_a", "lang", "kraft_b", "frei"];
 
 /**
  * Ordnet die Einheiten einer Woche den Bausteinen zu.
- * Reihenfolge: Kraft A (Studio zuerst), Lang (längste Ausdauer ≥ min_share), Kraft B, Frei.
+ * Reihenfolge: Kraft A (Studio zuerst), Lang (längste Ausdauer ≥ min_share), Kraft B, Training nach Wahl.
  */
 export function matchWeek(week, workouts, choices = {}) {
   const pool = (workouts || [])

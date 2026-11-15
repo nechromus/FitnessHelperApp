@@ -19,7 +19,7 @@ const week = {
       corridor: { minutes: [51, 69], effort: [1, 2] }, substitutes: [sub("weglassen", 0, [])] },
     { id: "w1-kraft-b", kind: "kraft_b", title: "Kraft B", minutes: 45, accepts: ["strength"],
       corridor: { minutes: [38, 52], effort: [2, 3] }, substitutes: [] },
-    { id: "w1-frei", kind: "frei", title: "Frei", minutes: 40, accepts: ["endurance", "strength"],
+    { id: "w1-frei", kind: "frei", title: "Training nach Wahl", minutes: 40, accepts: ["endurance", "strength"],
       corridor: { minutes: [34, 46], effort: [2, 3] }, substitutes: [] },
   ],
 };

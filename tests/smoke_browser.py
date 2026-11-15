@@ -44,7 +44,7 @@ def week(n, start):
             "blocks": [block(n, "kraft_a", "Kraft A · Studio", 70, ["studio"], start=start),
                        block(n, "lang", "Lang & ruhig", 60, ["endurance"], {"min_share": .75}, start=start),
                        block(n, "kraft_b", "Kraft B · Heimprogramm", 45, ["strength"], start=start),
-                       block(n, "frei", "Frei", 40, ["endurance", "strength"], start=start)]}
+                       block(n, "frei", "Training nach Wahl", 40, ["endurance", "strength"], start=start)]}
 
 
 PLAN = {

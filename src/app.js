@@ -1,10 +1,10 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-4";
-import { APP_VERSION } from "./version.js?v=2026.11.15-4";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-4";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-5";
+import { APP_VERSION } from "./version.js?v=2026.11.15-5";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-5";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf,
-} from "./plan.js?v=2026.11.15-4";
+} from "./plan.js?v=2026.11.15-5";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -160,7 +160,7 @@ function corridorRows(ev) {
   return grid;
 }
 
-const SHORT = { kraft_a: "Kraft A", kraft_b: "Kraft B", lang: "Lang", frei: "Frei" };
+const SHORT = { kraft_a: "Kraft A", kraft_b: "Kraft B", lang: "Lang", frei: "Nach Wahl" };
 function when(b) { return b.day ? `${fmtDay(b.day)} · ${b.slot}` : b.where; }
 function byDay(blocks) { return [...blocks].sort((x, y) => (x.block.day || "9").localeCompare(y.block.day || "9")); }
 
