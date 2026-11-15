@@ -268,3 +268,24 @@ button.day-link:focus-visible, .card-link:focus-visible, .list-link:focus-visibl
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .chip.tag-done { color: var(--ok); } .chip.tag-open { color: var(--muted); } .chip.tag-skipped { color: var(--warn); }
 .tabbar .nav-btn { font-size: .75rem; }
+
+/* Zeichnungen je Übung */
+.fig { flex: 0 0 auto; border-radius: 10px; background: var(--card); border: 1px solid var(--line); }
+.fig polyline, .fig path, .fig circle { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.fig .fig-machine { stroke: var(--muted); stroke-width: 3; opacity: .7; }
+.fig .fig-ghost { stroke: var(--accent-strong); stroke-width: 4; stroke-dasharray: 2 6; opacity: .45; }
+.fig .fig-person { stroke: var(--accent-strong); stroke-width: 5; }
+.fig .fig-head { fill: var(--accent-strong); stroke: none; }
+.fig .fig-arrow { stroke: var(--accent-2); stroke-width: 2.5; }
+.fig .fig-arrowhead { fill: var(--accent-2); stroke: none; }
+:root[data-theme="dark"] .fig .fig-person, :root[data-theme="dark"] .fig .fig-ghost { stroke: var(--accent); }
+:root[data-theme="dark"] .fig .fig-head { fill: var(--accent); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .fig .fig-person, :root:not([data-theme="light"]) .fig .fig-ghost { stroke: var(--accent); }
+  :root:not([data-theme="light"]) .fig .fig-head { fill: var(--accent); }
+}
+.ex-visual { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 4px; }
+.ex-visual .ex-cue { flex: 1 1 140px; }
+.small-btn { min-height: 44px; padding: 6px 14px; font-size: .9rem; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.photo-grid .photo-preview { max-height: 160px; object-fit: cover; aspect-ratio: 1; }

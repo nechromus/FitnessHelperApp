@@ -29,11 +29,11 @@ def block(n, kind, title, minutes, accepts, extra=None, start=None):
     b = {"id": f"w{n}-{kind.replace('_', '-')}", "kind": kind, "title": title, "minutes": minutes,
          "day": (start + timedelta(days=DAYOFF[kind])).isoformat(), "slot": "mittags",
          "where": "irgendwo", "details": "Testdetails", "accepts": accepts,
-         "exercises": [{"name": f"Testübung {kind} 1", "sets": 3, "reps": "15", "weight_kg": 20.5, "rest_s": 60, "cue": "Testhinweis", "device": "leg_extension"},
+         "exercises": [{"name": f"Testübung {kind} 1", "key": "leg_extension", "sets": 3, "reps": "15", "weight_kg": 20.5, "rest_s": 60, "cue": "Testhinweis", "device": "leg_extension"},
                        {"name": f"Testübung {kind} 2", "dose": "10 min ruhig", "cue": "Testhinweis 2"}],
          "corridor": {"minutes": [round(minutes * .85), round(minutes * 1.15)], "effort": [2, 3]},
          "substitutes": [{"id": "ersatz-a", "title": "Ersatz A", "minutes": 30, "accepts": accepts, "effect": "Testwirkung", "recommended": True,
-                          "exercises": [{"name": "Ersatzübung 1", "sets": 2, "reps": "10", "weight_kg": 20.5}, {"name": "Ersatzübung 2", "dose": "5 min"}]},
+                          "exercises": [{"name": "Ersatzübung 1", "key": "leg_extension", "sets": 2, "reps": "10", "weight_kg": 20.5}, {"name": "Ersatzübung 2", "dose": "5 min"}]},
                          {"id": "weglassen", "title": "Weglassen", "minutes": 0, "accepts": [], "effect": "weg"}]}
     if extra:
         b.update(extra)
@@ -178,7 +178,7 @@ def main():
         img.write_bytes(base64.b64decode(PNG))
         try:
             with page.expect_file_chooser() as fc:
-                page.click("#view-training button:has-text('Foto aufnehmen')")
+                page.click("#view-training button:has-text('Fotos aufnehmen')")
             fc.value.set_files(str(img))
             page.wait_for_selector("#sheet canvas.photo-preview")
             page.fill("#photo-note", "Beinstrecker")
@@ -191,6 +191,23 @@ def main():
         assert jp and meta and meta[0]["obj"]["file"] == jp[0]["path"] and meta[0]["obj"]["note"] == "Beinstrecker", puts
         page.click("#sheet-close")
         page.wait_for_selector("text=Heute 1 Foto gespeichert")
+        assert page.locator("#view-training svg.fig").count() >= 1
+        # Foto zu einer Übung, zwei Bilder auf einmal
+        img2 = ROOT / "tests" / "_tmp_photo2.png"
+        img.write_bytes(base64.b64decode(PNG)); img2.write_bytes(base64.b64decode(PNG))
+        try:
+            with page.expect_file_chooser() as fc:
+                page.locator("#view-training .ex button:has-text('Foto')").first.click()
+            fc.value.set_files([str(img), str(img2)])
+            page.wait_for_selector("#sheet button:has-text('2 Fotos hochladen')")
+            page.click("#sheet button:has-text('2 Fotos hochladen')")
+            page.wait_for_selector("#sheet >> text=2 Fotos gespeichert")
+        finally:
+            img.unlink(); img2.unlink()
+        ex_meta = [x["obj"] for x in puts if x["path"].startswith("inbox/app/photos/") and x["path"].endswith(".json") and x["obj"].get("exercise")]
+        assert len(ex_meta) == 2 and ex_meta[0]["exercise"] == "leg_extension", ex_meta
+        page.click("#sheet-close")
+        page.wait_for_selector("text=Heute 3 Fotos gespeichert")
 
         page.click(".tabbar [data-view=weg]")
         page.wait_for_selector("text=Wie nah bist du dran?")

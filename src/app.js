@@ -1,10 +1,11 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-6";
-import { APP_VERSION } from "./version.js?v=2026.11.15-6";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-6";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-7";
+import { APP_VERSION } from "./version.js?v=2026.11.15-7";
+import { figure } from "./figures.js?v=2026.11.15-7";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-7";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf,
-} from "./plan.js?v=2026.11.15-6";
+} from "./plan.js?v=2026.11.15-7";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -429,8 +430,14 @@ function toggleTick(key, i) {
   store.set(KEY_TICKS, JSON.stringify(all));
 }
 
-/** Übungsliste; mit tickKey lassen sich Übungen abhaken (nur heute, nur auf diesem Gerät). */
-function exerciseList(ex, tickKey = null) {
+function photosToday(match) {
+  const t = today();
+  return state.photos.filter((p) => (p.day || p.created_at.slice(0, 10)) === t && Object.entries(match).every(([k, v]) => p[k] === v));
+}
+
+/** Übungsliste mit Zeichnung je Übung; mit tickKey lassen sich Übungen abhaken (nur heute, nur auf diesem Gerät).
+ *  Mit ctx (Baustein) gibt es je Übung einen Foto-Knopf. */
+function exerciseList(ex, tickKey = null, ctx = null) {
   const ticks = tickKey ? getTicks(tickKey) : null;
   const ol = el("ol", { class: "ex-list" });
   ex.forEach((e, i) => {
@@ -454,7 +461,12 @@ function exerciseList(ex, tickKey = null) {
       el("strong", { class: "ex-name", text: e.name }),
       el("span", { class: "ex-dose", text: bits.filter(Boolean).join(" · ") }));
     if (e.last_kg != null && e.weight_kg != null && e.last_kg !== e.weight_kg) body.append(el("span", { class: "muted small", text: `vor Planbeginn ${fmtKg(e.last_kg)}` }));
-    if (e.cue) body.append(el("span", { class: "ex-cue", text: e.cue }));
+    const fig = e.key ? figure(e.key) : null;
+    if (fig || e.cue) body.append(el("div", { class: "ex-visual" }, fig, e.cue ? el("span", { class: "ex-cue", text: e.cue }) : null));
+    if (ctx && e.key) {
+      const n = photosToday({ block_id: ctx.block_id, exercise: e.key }).length;
+      body.append(el("div", { class: "row" }, btn(n ? `Foto · ${n} heute` : "Foto", () => pickPhoto({ ...ctx, exercise: e.key, exercise_name: e.name, label: `${ctx.label} · ${e.name}` }), "btn small-btn")));
+    }
     li.append(body);
     ol.append(li);
   });
@@ -497,7 +509,8 @@ function blockDetail(mb, week, inline = false) {
     const strength = b.kind.startsWith("kraft") || !!sub?.exercises;
     wrap.append(el("h3", { class: "detail-h", text: strength ? "Übungen" : "Ablauf" }));
     if (inline && mb.status !== "skipped") wrap.append(el("span", { class: "muted small", text: "Antippen zum Abhaken." }));
-    wrap.append(exerciseList(ex, inline && mb.status !== "skipped" ? `${today()}|${b.id}` : null));
+    wrap.append(exerciseList(ex, inline && mb.status !== "skipped" ? `${today()}|${b.id}` : null,
+      mb.status !== "skipped" ? { block_id: b.id, workout_id: mb.workout?.id, label: b.title } : null));
   } else if (!b.skipped) {
     wrap.append(el("p", { text: sub ? sub.effect : b.details }));
   }
@@ -517,7 +530,7 @@ function blockDetail(mb, week, inline = false) {
   } else {
     actions.append(btn("Doch machen", () => chooseSubstitute(b, { id: "plan", title: "Wie geplant" })));
   }
-  if (mb.status !== "skipped") actions.append(btn("Foto vom Gerät", () => pickPhoto({ block_id: b.id, workout_id: mb.workout?.id, label: b.title })));
+  if (mb.status !== "skipped") actions.append(btn("Fotos zur Einheit", () => pickPhoto({ block_id: b.id, workout_id: mb.workout?.id, label: b.title })));
   wrap.append(actions);
   return wrap;
 }
@@ -553,7 +566,7 @@ function openWorkout(w) {
   if (f) body.append(el("p", { class: "small", text: `Gefühl: ${labels()[f.effort - 1]}${f.knee != null ? ` · Knie: ${(state.plan?.knee_labels || [])[f.knee] || f.knee}` : ""}${f.note ? ` · ${f.note}` : ""}` }));
   body.append(el("div", { class: "row wrap" },
     f ? null : btn("Rückmeldung geben", () => openFeedback(w), "btn primary"),
-    btn("Foto vom Gerät", () => pickPhoto({ workout_id: w.id, label: workoutLine(w) }))));
+    btn("Fotos zur Einheit", () => pickPhoto({ workout_id: w.id, label: workoutLine(w) }))));
   openSheet(TYPE_LABELS[w.type] || w.type, body);
 }
 
@@ -590,8 +603,8 @@ function renderTraining() {
   const shots = state.photos.filter((p) => (p.day || p.created_at.slice(0, 10)) === t);
   colB.append(el("section", { class: "card" },
     el("strong", { text: "Gerätebildschirm fotografieren" }),
-    el("span", { class: "muted", text: "Zum Beispiel Gewicht und Wiederholungen am Technogym-Gerät oder die Anzeige am Rudergerät. Claude liest die Werte aus und übernimmt sie." }),
-    btn("Foto aufnehmen", () => pickPhoto({ block_id: list[0]?.block.id, label: list[0]?.block.title || "Training" }), "btn primary"),
+    el("span", { class: "muted", text: "Zu einer Übung: Knopf „Foto“ bei der Übung. Für die ganze Einheit: hier – auch mehrere Bilder auf einmal. Claude liest die Werte aus und übernimmt sie." }),
+    btn("Fotos aufnehmen", () => pickPhoto({ block_id: list[0]?.block.id, label: list[0]?.block.title || "Training" }), "btn primary"),
     el("span", { class: "muted small", text: shots.length ? `Heute ${shots.length} ${shots.length === 1 ? "Foto" : "Fotos"} gespeichert` : "Heute noch keine Fotos" })));
   colB.append(el("section", { class: "card" }, el("strong", { text: "Diese Woche" }), dayStrip(week, matched(week))));
   root.append(el("div", { class: "cols" }, colA, colB));
@@ -600,11 +613,11 @@ function renderTraining() {
 // ---------------------------------------------------------------- Foto vom Gerätebildschirm
 function pickPhoto(ctx) {
   // ohne capture: iPhone bietet Kamera, Fotomediathek oder Datei an
-  const input = el("input", { type: "file", accept: "image/*", class: "visually-hidden", "aria-hidden": "true", tabindex: "-1" });
+  const input = el("input", { type: "file", accept: "image/*", multiple: true, class: "visually-hidden", "aria-hidden": "true", tabindex: "-1" });
   input.addEventListener("change", () => {
-    const f = input.files?.[0];
+    const files = [...(input.files || [])].slice(0, MAX_PHOTOS);
     input.remove();
-    if (f) openPhoto(f, ctx);
+    if (files.length) openPhoto(files, ctx);
   });
   document.body.append(input);
   input.click();
@@ -622,39 +635,53 @@ async function shrink(file, max = 1600) {
   return c; // Neu gezeichnet: keine EXIF-/Ortsdaten mehr
 }
 
-async function openPhoto(file, ctx) {
-  let canvas;
-  try { canvas = await shrink(file); } catch {
+const MAX_PHOTOS = 10;
+
+async function openPhoto(files, ctx) {
+  const canvases = [];
+  for (const f of files) {
+    try { canvases.push(await shrink(f)); } catch { /* unlesbares Bild überspringen */ }
+  }
+  if (!canvases.length) {
     openSheet("Foto vom Gerät", el("p", { text: "Das Bild konnte nicht gelesen werden." }));
     return;
   }
-  canvas.className = "photo-preview";
-  canvas.setAttribute("role", "img");
-  canvas.setAttribute("aria-label", "Vorschau des Fotos");
+  canvases.forEach((c, i) => {
+    c.className = "photo-preview";
+    c.setAttribute("role", "img");
+    c.setAttribute("aria-label", `Vorschau Foto ${i + 1}`);
+  });
   const note = el("input", { type: "text", id: "photo-note", maxlength: "200", placeholder: "z. B. Beinstrecker, 3. Satz" });
-  const up = btn("Hochladen", null, "btn primary full");
+  const n = canvases.length;
+  const up = btn(n === 1 ? "Hochladen" : `${n} Fotos hochladen`, null, "btn primary full");
+  let done = 0;
   up.addEventListener("click", async () => {
     up.disabled = true;
-    sheetStatus("Lade hoch …");
     try {
-      const blob = await new Promise((res, rej) => canvas.toBlob((x) => (x ? res(x) : rej(new Error("Bild konnte nicht erzeugt werden"))), "image/jpeg", 0.82));
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      const base = inboxName("inbox/app/photos", ctx.block_id || ctx.workout_id || "foto").replace(/\.json$/, "");
-      await putPhoto(getSettings(), `${base}.jpg`, bytes, getToken(), `App: Foto ${ctx.block_id || ""}`.trim());
-      const meta = { file: `${base}.jpg`, block_id: ctx.block_id || null, workout_id: ctx.workout_id || null, day: today(),
-        note: note.value.trim() || null, created_at: new Date().toISOString(), source: "app" };
-      await save(`${base}.json`, meta, "App: Foto-Info");
-      state.photos.push(meta);
+      for (; done < n; done++) {
+        sheetStatus(n === 1 ? "Lade hoch …" : `Lade Foto ${done + 1} von ${n} hoch …`);
+        const c = canvases[done];
+        const blob = await new Promise((res, rej) => c.toBlob((x) => (x ? res(x) : rej(new Error("Bild konnte nicht erzeugt werden"))), "image/jpeg", 0.82));
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const id = [ctx.block_id || ctx.workout_id || "foto", ctx.exercise, n > 1 ? done + 1 : null].filter(Boolean).join("_");
+        const base = inboxName("inbox/app/photos", id).replace(/\.json$/, "");
+        await putPhoto(getSettings(), `${base}.jpg`, bytes, getToken(), `App: Foto ${id}`);
+        const meta = { file: `${base}.jpg`, block_id: ctx.block_id || null, workout_id: ctx.workout_id || null,
+          exercise: ctx.exercise || null, exercise_name: ctx.exercise_name || null, day: today(),
+          note: note.value.trim() || null, created_at: new Date().toISOString(), source: "app" };
+        await save(`${base}.json`, meta, "App: Foto-Info");
+        state.photos.push(meta);
+      }
       $("#sheet-body").replaceChildren(el("div", { class: "sheet-content" },
-        el("p", { text: "Foto gespeichert. Claude liest es beim nächsten Abgleich aus und übernimmt die Werte." }),
-        btn("Noch ein Foto", () => pickPhoto(ctx), "btn")));
+        el("p", { text: `${n === 1 ? "Foto" : `${n} Fotos`} gespeichert. Claude liest sie beim nächsten Abgleich aus und übernimmt die Werte.` }),
+        btn("Weitere Fotos", () => pickPhoto(ctx), "btn")));
       sheetStatus("Gespeichert.", "ok");
       render();
-    } catch (e) { sheetStatus(e.message, "error"); up.disabled = false; }
+    } catch (e) { sheetStatus(`${e.message}${done ? ` – ${done} von ${n} gespeichert` : ""}`, "error"); up.disabled = false; }
   });
-  openSheet("Foto vom Gerät", el("div", { class: "sheet-content" },
+  openSheet(n === 1 ? "Foto vom Gerät" : `${n} Fotos vom Gerät`, el("div", { class: "sheet-content" },
     ctx.label ? el("p", { class: "muted", text: ctx.label }) : null,
-    canvas, el("label", { class: "field" }, "Notiz (optional)", note), up,
+    el("div", { class: n > 1 ? "photo-grid" : "" }, ...canvases), el("label", { class: "field" }, "Notiz (optional, gilt für alle)", note), up,
     el("span", { class: "muted small", text: "Wird verkleinert und ohne Ortsdaten nur in dein privates Daten-Repo geschrieben." })));
 }
 
