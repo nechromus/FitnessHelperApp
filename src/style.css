@@ -289,3 +289,12 @@ button.day-link:focus-visible, .card-link:focus-visible, .list-link:focus-visibl
 .small-btn { min-height: 44px; padding: 6px 14px; font-size: .9rem; }
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 .photo-grid .photo-preview { max-height: 160px; object-fit: cover; aspect-ratio: 1; }
+.guide { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 4px; }
+.guide summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 700; color: var(--accent-strong); list-style: none; }
+.guide summary::-webkit-details-marker { display: none; }
+.guide summary::before { content: "›"; display: inline-block; width: 1.1em; font-size: 1.3rem; transition: transform .15s; }
+.guide[open] summary::before { transform: rotate(90deg); }
+.guide-sec { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 10px; font-size: .92rem; }
+.guide-sec p { margin: 0; }
+.guide-steps, .guide-list, .guide-links { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; }
+.guide-links a { color: var(--accent-strong); font-weight: 700; min-height: 32px; display: inline-flex; align-items: center; }

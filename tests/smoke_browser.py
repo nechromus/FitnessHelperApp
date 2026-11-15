@@ -30,7 +30,10 @@ def block(n, kind, title, minutes, accepts, extra=None, start=None):
          "day": (start + timedelta(days=DAYOFF[kind])).isoformat(), "slot": "mittags",
          "where": "irgendwo", "details": "Testdetails", "accepts": accepts,
          "exercises": [{"name": f"Testübung {kind} 1", "key": "leg_extension", "sets": 3, "reps": "15", "weight_kg": 20.5, "rest_s": 60, "cue": "Testhinweis", "device": "leg_extension"},
-                       {"name": f"Testübung {kind} 2", "dose": "10 min ruhig", "cue": "Testhinweis 2"}],
+                       {"name": f"Testübung {kind} 2", "dose": "10 min ruhig", "cue": "Testhinweis 2",
+                        "guide": {"setup": "Testaufbau", "steps": ["Schritt 1", "Schritt 2"], "mistakes": ["Fehler"], "easier": "leichter",
+                                  "videos": [{"title": "Testvideo", "url": "https://example.org/video", "source": "Test"},
+                                             {"title": "Böse", "url": "javascript:alert(1)"}]}}],
          "corridor": {"minutes": [round(minutes * .85), round(minutes * 1.15)], "effort": [2, 3]},
          "substitutes": [{"id": "ersatz-a", "title": "Ersatz A", "minutes": 30, "accepts": accepts, "effect": "Testwirkung", "recommended": True,
                           "exercises": [{"name": "Ersatzübung 1", "key": "leg_extension", "sets": 2, "reps": "10", "weight_kg": 20.5}, {"name": "Ersatzübung 2", "dose": "5 min"}]},
@@ -156,10 +159,14 @@ def main():
         page.wait_for_selector("#sheet", state="hidden")
         assert any(x["path"].startswith("inbox/app/choices/") and x["obj"]["substitute_id"] == "ersatz-a" for x in puts), puts
         # Details per Antippen
-        page.locator("#view-plan .block .card-link").first.click()
+        page.locator("#view-plan .block .card-link", has_text="Kraft B").first.click()
         page.wait_for_selector("#sheet .ex-list")
         assert page.locator("#sheet .ex").count() == 2
         assert "20,5 kg" in page.inner_text("#sheet")
+        page.locator("#sheet details.guide summary").first.click()
+        assert page.locator("#sheet details.guide[open] li", has_text="Schritt 2").count() == 1
+        hrefs = page.eval_on_selector_all("#sheet details.guide a", "els => els.map(e => e.getAttribute('href'))")
+        assert hrefs == ["https://example.org/video"], hrefs
         page.click("#sheet-close")
         page.locator("#view-plan .daystrip button.day-link").first.click()
         page.wait_for_selector("#sheet .detail")

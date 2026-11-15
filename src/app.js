@@ -1,11 +1,11 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-7";
-import { APP_VERSION } from "./version.js?v=2026.11.15-7";
-import { figure } from "./figures.js?v=2026.11.15-7";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-7";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-8";
+import { APP_VERSION } from "./version.js?v=2026.11.15-8";
+import { figure } from "./figures.js?v=2026.11.15-8";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-8";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf,
-} from "./plan.js?v=2026.11.15-7";
+} from "./plan.js?v=2026.11.15-8";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -463,6 +463,7 @@ function exerciseList(ex, tickKey = null, ctx = null) {
     if (e.last_kg != null && e.weight_kg != null && e.last_kg !== e.weight_kg) body.append(el("span", { class: "muted small", text: `vor Planbeginn ${fmtKg(e.last_kg)}` }));
     const fig = e.key ? figure(e.key) : null;
     if (fig || e.cue) body.append(el("div", { class: "ex-visual" }, fig, e.cue ? el("span", { class: "ex-cue", text: e.cue }) : null));
+    if (e.guide) body.append(guideBox(e.guide));
     if (ctx && e.key) {
       const n = photosToday({ block_id: ctx.block_id, exercise: e.key }).length;
       body.append(el("div", { class: "row" }, btn(n ? `Foto · ${n} heute` : "Foto", () => pickPhoto({ ...ctx, exercise: e.key, exercise_name: e.name, label: `${ctx.label} · ${e.name}` }), "btn small-btn")));
@@ -471,6 +472,25 @@ function exerciseList(ex, tickKey = null, ctx = null) {
     ol.append(li);
   });
   return ol;
+}
+
+/** Aufklappbare Anleitung mit Ablauf, Fehlern, Varianten und Video-Links (nur https). */
+function guideBox(g) {
+  const d = el("details", { class: "guide" }, el("summary", { text: g.videos?.length ? "Anleitung & Video" : "Anleitung" }));
+  const sec = (title, ...content) => d.append(el("div", { class: "guide-sec" }, el("strong", { text: title }), ...content));
+  if (g.setup) sec("Ausgangsposition", el("p", { text: g.setup }));
+  if (g.steps?.length) sec("Ablauf", el("ol", { class: "guide-steps" }, ...g.steps.map((s) => el("li", { text: s }))));
+  if (g.breath) sec("Atmung", el("p", { text: g.breath }));
+  if (g.mistakes?.length) sec("Typische Fehler", el("ul", { class: "guide-list" }, ...g.mistakes.map((s) => el("li", { text: s }))));
+  if (g.easier || g.harder) sec("Anpassen", g.easier ? el("p", {}, el("b", { text: "Leichter: " }), g.easier) : null, g.harder ? el("p", {}, el("b", { text: "Schwerer: " }), g.harder) : null);
+  if (g.knee) sec("Knie links", el("p", { text: g.knee }));
+  const vids = (g.videos || []).filter((v) => /^https:\/\/[^\s"'<>]+$/.test(v.url || ""));
+  if (vids.length) {
+    sec("Video", el("ul", { class: "guide-links" }, ...vids.map((v) => el("li", {},
+      el("a", { href: v.url, target: "_blank", rel: "noopener noreferrer", text: v.title }),
+      v.source ? el("span", { class: "muted small", text: ` · ${v.source}` }) : null))));
+  }
+  return d;
 }
 
 /** Technogym-Übungen am Tag einer Einheit, mit Vergleich zum Zielgewicht. */
