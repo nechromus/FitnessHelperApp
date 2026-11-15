@@ -1,7 +1,8 @@
 # Regeln für Claude in FitnessHelperApp
 
 - Repo ist **öffentlich**: niemals Daten, Beispielwerte aus echten Exporten, Tokens oder E-Mail-Adressen committen.
-- Die App liest nur `data/` aus `nechromus/FitnessHelperAppData` über api.github.com und schreibt nie.
+- Die App liest `data/` aus `nechromus/FitnessHelperAppData` über api.github.com und schreibt nur nach `inbox/app/` (Rückmeldung, Ersatz, Wünsche).
+- Tests nur mit synthetischen Daten.
 - Netzwerk nur zu api.github.com und zur eigenen Seite (version.json); CSP in index.html nicht weiter lockern.
 - Kein Build-Schritt, keine externen Abhängigkeiten oder CDNs.
 - Laden/Rechnen in `src/data.js` (ohne DOM), Oberfläche in `src/app.js`; Texte mit textContent, nie innerHTML mit Daten.
