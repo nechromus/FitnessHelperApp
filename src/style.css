@@ -233,3 +233,38 @@ input[type=text], input[type=password], #settings input:not([type=checkbox]) {
   :root:not([data-theme="light"]) .bar { border-bottom: 1px solid var(--line); }
 }
 main { padding-top: 22px; }
+
+/* ---------------------------------------------------------------- Details und Training */
+.card-link, .list-link {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.card-link .big, .card-link strong { flex: 1; }
+.list-link { padding: 2px 0; }
+.mini-list li > .list-link, .plain-list li > .list-link { flex: 1; }
+.chev { color: var(--accent-strong); font-size: 1.4rem; line-height: 1; font-weight: 700; }
+button.day-link { font: inherit; color: inherit; border: 0; background: transparent; cursor: pointer; }
+button.day-link:focus-visible, .card-link:focus-visible, .list-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.detail { display: flex; flex-direction: column; gap: 10px; }
+.detail-h { margin: 6px 0 0; font-size: 1rem; font-family: var(--display); font-weight: 800; }
+.ex-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ex { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+.ex-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ex-name { font-size: 1rem; }
+.ex-dose { font-weight: 700; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+.ex-cue { font-size: .88rem; color: var(--muted); }
+.ex-num { flex: 0 0 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: .9rem; color: var(--primary-text); background: var(--primary-bg); }
+.tick {
+  flex: 0 0 44px; height: 44px; border-radius: 50%; border: 2px solid var(--line); background: var(--card);
+  color: transparent; font-size: 1.2rem; font-weight: 800; cursor: pointer;
+}
+.ex.ticked { opacity: .6; }
+.ex.ticked .tick { background: var(--primary-bg); border-color: transparent; color: var(--primary-text); box-shadow: var(--glow); }
+.ex.ticked .ex-name { text-decoration: line-through; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.tile strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.photo-preview { width: 100%; height: auto; max-height: 50vh; object-fit: contain; border-radius: 12px; border: 1px solid var(--line); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.chip.tag-done { color: var(--ok); } .chip.tag-open { color: var(--muted); } .chip.tag-skipped { color: var(--warn); }
+.tabbar .nav-btn { font-size: .75rem; }

@@ -29,8 +29,11 @@ def block(n, kind, title, minutes, accepts, extra=None, start=None):
     b = {"id": f"w{n}-{kind.replace('_', '-')}", "kind": kind, "title": title, "minutes": minutes,
          "day": (start + timedelta(days=DAYOFF[kind])).isoformat(), "slot": "mittags",
          "where": "irgendwo", "details": "Testdetails", "accepts": accepts,
+         "exercises": [{"name": f"Testübung {kind} 1", "sets": 3, "reps": "15", "weight_kg": 20.5, "rest_s": 60, "cue": "Testhinweis", "device": "leg_extension"},
+                       {"name": f"Testübung {kind} 2", "dose": "10 min ruhig", "cue": "Testhinweis 2"}],
          "corridor": {"minutes": [round(minutes * .85), round(minutes * 1.15)], "effort": [2, 3]},
-         "substitutes": [{"id": "ersatz-a", "title": "Ersatz A", "minutes": 30, "accepts": accepts, "effect": "Testwirkung", "recommended": True},
+         "substitutes": [{"id": "ersatz-a", "title": "Ersatz A", "minutes": 30, "accepts": accepts, "effect": "Testwirkung", "recommended": True,
+                          "exercises": [{"name": "Ersatzübung 1", "sets": 2, "reps": "10", "weight_kg": 20.5}, {"name": "Ersatzübung 2", "dose": "5 min"}]},
                          {"id": "weglassen", "title": "Weglassen", "minutes": 0, "accepts": [], "effect": "weg"}]}
     if extra:
         b.update(extra)
@@ -57,6 +60,8 @@ PLAN = {
     "readiness": {"as_of": TODAY.isoformat(), "items": [{"id": "a", "title": "Aspekt A", "percent": 50, "confidence": "mittel", "pro": "p", "missing": "m"}]},
 }
 y = YESTERDAY.isoformat()
+# 2×2-PNG, synthetisch
+PNG = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg=="
 WORKOUTS = {"schema_version": 1, "workouts": [
     {"id": "test:run1", "source": "strava", "type": "run", "name": "Testlauf <b>x</b>", "start_local": f"{y}T12:00:00",
      "start_utc": f"{y}T11:00:00Z", "duration_s": 2460, "moving_s": 2400, "distance_m": 4600},
@@ -92,7 +97,12 @@ def main():
         rel = path.split("/contents/", 1)[1] if "/contents/" in path else ""
         if req.method == "PUT":
             body = json.loads(req.post_data)
-            puts.append({"path": rel, "obj": json.loads(base64.b64decode(body["content"]).decode())})
+            raw = base64.b64decode(body["content"])
+            if rel.endswith(".jpg"):
+                assert raw[:2] == b"\xff\xd8", "kein JPEG"
+                puts.append({"path": rel, "bytes": len(raw)})
+            else:
+                puts.append({"path": rel, "obj": json.loads(raw.decode())})
             return route.fulfill(status=201, content_type="application/json", body="{}", headers=cors)
         if rel in FILES:
             return route.fulfill(status=200, content_type="application/json", body=json.dumps(FILES[rel]), headers=cors)
@@ -145,6 +155,43 @@ def main():
         page.click("#sheet .option.recommended")
         page.wait_for_selector("#sheet", state="hidden")
         assert any(x["path"].startswith("inbox/app/choices/") and x["obj"]["substitute_id"] == "ersatz-a" for x in puts), puts
+        # Details per Antippen
+        page.locator("#view-plan .block .card-link").first.click()
+        page.wait_for_selector("#sheet .ex-list")
+        assert page.locator("#sheet .ex").count() == 2
+        assert "20,5 kg" in page.inner_text("#sheet")
+        page.click("#sheet-close")
+        page.locator("#view-plan .daystrip button.day-link").first.click()
+        page.wait_for_selector("#sheet .detail")
+        page.click("#sheet-close")
+
+        # Reiter Training mit Abhaken und Foto
+        page.click(".tabbar [data-view=training]")
+        page.wait_for_selector("#view-training .card-next")
+        assert page.locator("#view-training .ex").count() >= 2
+        if page.locator("#view-training .tick").count():
+            page.locator("#view-training .tick").first.click()
+            assert page.locator("#view-training .ex.ticked").count() == 1
+        if a.shots:
+            page.screenshot(path=f"{a.shots}/iphone-training.png", full_page=True)
+        img = ROOT / "tests" / "_tmp_photo.png"
+        img.write_bytes(base64.b64decode(PNG))
+        try:
+            with page.expect_file_chooser() as fc:
+                page.click("#view-training button:has-text('Foto aufnehmen')")
+            fc.value.set_files(str(img))
+            page.wait_for_selector("#sheet canvas.photo-preview")
+            page.fill("#photo-note", "Beinstrecker")
+            page.click("#sheet button:has-text('Hochladen')")
+            page.wait_for_selector("#sheet >> text=Foto gespeichert")
+        finally:
+            img.unlink()
+        jp = [x for x in puts if x["path"].startswith("inbox/app/photos/") and x["path"].endswith(".jpg")]
+        meta = [x for x in puts if x["path"].startswith("inbox/app/photos/") and x["path"].endswith(".json")]
+        assert jp and meta and meta[0]["obj"]["file"] == jp[0]["path"] and meta[0]["obj"]["note"] == "Beinstrecker", puts
+        page.click("#sheet-close")
+        page.wait_for_selector("text=Heute 1 Foto gespeichert")
+
         page.click(".tabbar [data-view=weg]")
         page.wait_for_selector("text=Wie nah bist du dran?")
         page.click(".tabbar [data-view=fortschritt]")
@@ -181,6 +228,7 @@ def main():
     if errors:
         print("Konsolenfehler:", errors)
         return 1
+    assert all(x["path"].startswith("inbox/app/") for x in puts)
     print(f"Smoke-Test OK: {len(requests)} API-Aufrufe, {len(puts)} Schreibvorgänge nach inbox/app/")
     return 0
 

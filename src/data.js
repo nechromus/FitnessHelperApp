@@ -92,6 +92,25 @@ export async function putJson(settings, path, obj, token, message, fetchImpl = f
   return true;
 }
 
+/** Base64 aus Bytes (für Fotos). */
+export function bytesToBase64(bytes) {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(bin);
+}
+
+/** Legt ein JPEG-Foto an – ausschließlich unter inbox/app/photos/. */
+export async function putPhoto(settings, path, bytes, token, message, fetchImpl = fetch) {
+  if (!/^inbox\/app\/photos\/[A-Za-z0-9_-]+\.jpg$/.test(path)) throw new Error("Fotos nur nach inbox/app/photos/*.jpg");
+  if (bytes.length > 4 * 1024 * 1024) throw new Error("Foto zu groß");
+  const url = dirUrl(settings, path).replace(/\?ref=.*$/, "");
+  const body = { message, content: bytesToBase64(bytes), branch: settings.branch || "main" };
+  const res = await fetchImpl(url, { method: "PUT", headers: { ...headers(token, false), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) throw httpError(res, "Foto speichern");
+  return true;
+}
+
 export function parseDoc(text) {
   let doc;
   try { doc = JSON.parse(text); } catch { throw new Error("Keine gültige JSON-Datei"); }

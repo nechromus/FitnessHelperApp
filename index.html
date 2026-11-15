@@ -14,14 +14,15 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="src/style.css?v=2026.11.15-5">
-  <script type="module" src="src/app.js?v=2026.11.15-5"></script>
+  <link rel="stylesheet" href="src/style.css?v=2026.11.15-6">
+  <script type="module" src="src/app.js?v=2026.11.15-6"></script>
 </head>
 <body>
 <div class="shell">
   <nav class="sidebar" aria-label="Hauptnavigation">
     <div class="brand"><img src="icons/icon.svg" alt="" width="36" height="36"><span>FitnessHelper</span></div>
     <button type="button" class="nav-btn" data-view="heute">Heute</button>
+    <button type="button" class="nav-btn" data-view="training">Training</button>
     <button type="button" class="nav-btn" data-view="plan">Plan</button>
     <button type="button" class="nav-btn" data-view="weg">Weg</button>
     <button type="button" class="nav-btn" data-view="fortschritt">Fortschritt</button>
@@ -48,6 +49,7 @@
     <main>
       <p id="status" class="status" role="status"></p>
       <section id="view-heute" class="view" data-title="Heute"></section>
+      <section id="view-training" class="view" data-title="Training heute" hidden></section>
       <section id="view-plan" class="view" data-title="Plan" hidden></section>
       <section id="view-weg" class="view" data-title="Dein Weg" hidden></section>
       <section id="view-fortschritt" class="view" data-title="Fortschritt" hidden></section>
@@ -56,6 +58,7 @@
 
   <nav class="tabbar" aria-label="Hauptnavigation">
     <button type="button" class="nav-btn" data-view="heute">Heute</button>
+    <button type="button" class="nav-btn" data-view="training">Training</button>
     <button type="button" class="nav-btn" data-view="plan">Plan</button>
     <button type="button" class="nav-btn" data-view="weg">Weg</button>
     <button type="button" class="nav-btn" data-view="fortschritt">Fortschritt</button>

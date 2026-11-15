@@ -1,7 +1,7 @@
 // Aufruf: node --test tests/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { contentsUrl, loadFromGitHub, parseDoc, summarize, fmtDuration, fmtKm, fmtDate, DEFAULTS } from "../src/data.js";
+import { contentsUrl, loadFromGitHub, parseDoc, summarize, fmtDuration, fmtKm, fmtDate, DEFAULTS, putPhoto, bytesToBase64 } from "../src/data.js";
 
 const doc = { schema_version: 1, count: 2, workouts: [
   { id: "strava:1", type: "run", start_local: "2026-09-06T07:30:12", start_utc: "2026-09-06T05:30:12Z", duration_s: 2410, distance_m: 6120.4 },
@@ -88,5 +88,19 @@ test("Versionsangaben sind überall gleich", () => {
     for (const m of readFileSync(new URL(f, root), "utf8").matchAll(/\?v=([\d.-]+)/g)) {
       assert.equal(m[1], vj, `${f} verweist auf ?v=${m[1]}`);
     }
+  }
+});
+
+test("Fotos nur nach inbox/app/photos/*.jpg, als Base64 an api.github.com", async () => {
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  assert.equal(bytesToBase64(bytes), "/9j/2Q==");
+  let seen = null;
+  const fake = async (url, opts) => { seen = { url, opts }; return { ok: true, status: 201 }; };
+  await putPhoto(DEFAULTS, "inbox/app/photos/20261116T110000_w1-kraft-a.jpg", bytes, "t", "m", fake);
+  assert.ok(seen.url.startsWith("https://api.github.com/repos/"));
+  assert.equal(seen.opts.method, "PUT");
+  assert.equal(JSON.parse(seen.opts.body).content, "/9j/2Q==");
+  for (const bad of ["data/x.jpg", "inbox/app/photos/../x.jpg", "inbox/app/photos/x.png", "inbox/app/feedback/x.jpg"]) {
+    await assert.rejects(() => putPhoto(DEFAULTS, bad, bytes, "t", "m", fake));
   }
 });
