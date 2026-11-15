@@ -22,8 +22,12 @@ MONDAY = TODAY - timedelta(days=TODAY.weekday())
 YESTERDAY = TODAY - timedelta(days=1)
 
 
-def block(n, kind, title, minutes, accepts, extra=None):
+DAYOFF = {"kraft_a": 0, "lang": 5, "kraft_b": 2, "frei": 3}
+
+
+def block(n, kind, title, minutes, accepts, extra=None, start=None):
     b = {"id": f"w{n}-{kind.replace('_', '-')}", "kind": kind, "title": title, "minutes": minutes,
+         "day": (start + timedelta(days=DAYOFF[kind])).isoformat(), "slot": "mittags",
          "where": "irgendwo", "details": "Testdetails", "accepts": accepts,
          "corridor": {"minutes": [round(minutes * .85), round(minutes * 1.15)], "effort": [2, 3]},
          "substitutes": [{"id": "ersatz-a", "title": "Ersatz A", "minutes": 30, "accepts": accepts, "effect": "Testwirkung", "recommended": True},
@@ -36,10 +40,11 @@ def block(n, kind, title, minutes, accepts, extra=None):
 def week(n, start):
     return {"week": n, "start": start.isoformat(), "end": (start + timedelta(days=6)).isoformat(), "focus": "Testfokus",
             "note": "Testhinweis" if n == 2 else None, "deload": False,
-            "blocks": [block(n, "kraft_a", "Kraft A · Studio", 70, ["studio"]),
-                       block(n, "lang", "Lang & ruhig", 60, ["endurance"], {"min_share": .75}),
-                       block(n, "kraft_b", "Kraft B · Heimprogramm", 45, ["strength"]),
-                       block(n, "frei", "Frei", 40, ["endurance", "strength"])]}
+            "unavailable": [{"date": (start + timedelta(days=1)).isoformat(), "text": "Testtermin – kein Training"}],
+            "blocks": [block(n, "kraft_a", "Kraft A · Studio", 70, ["studio"], start=start),
+                       block(n, "lang", "Lang & ruhig", 60, ["endurance"], {"min_share": .75}, start=start),
+                       block(n, "kraft_b", "Kraft B · Heimprogramm", 45, ["strength"], start=start),
+                       block(n, "frei", "Frei", 40, ["endurance", "strength"], start=start)]}
 
 
 PLAN = {
@@ -129,6 +134,8 @@ def main():
         page.click(".tabbar [data-view=plan]")
         page.wait_for_selector("#view-plan .card")
         assert page.locator("#view-plan .block").count() == 4
+        assert page.locator("#view-plan .daystrip .day").count() == 7
+        assert page.locator("#view-plan .day-off").count() == 1
         if YESTERDAY >= MONDAY:  # gestern liegt in dieser Woche
             assert page.locator("#view-plan .corr").count() >= 1
             assert page.locator("#view-plan .corr-state").first.is_visible()

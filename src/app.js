@@ -1,10 +1,10 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-2";
-import { APP_VERSION } from "./version.js?v=2026.11.15-2";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-2";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-3";
+import { APP_VERSION } from "./version.js?v=2026.11.15-3";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-3";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf,
-} from "./plan.js?v=2026.11.15-2";
+} from "./plan.js?v=2026.11.15-3";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -153,6 +153,39 @@ function corridorRows(ev) {
   return grid;
 }
 
+const SHORT = { kraft_a: "Kraft A", kraft_b: "Kraft B", lang: "Lang", frei: "Frei" };
+function when(b) { return b.day ? `${fmtDay(b.day)} · ${b.slot}` : b.where; }
+function byDay(blocks) { return [...blocks].sort((x, y) => (x.block.day || "9").localeCompare(y.block.day || "9")); }
+
+/** Tagesleiste Mo–So mit geplanten Bausteinen und gesperrten Tagen. */
+function dayStrip(week, m) {
+  const t = today();
+  const strip = el("div", { class: "daystrip", role: "list", "aria-label": "Wochenübersicht nach Tagen" });
+  const start = new Date(week.start + "T00:00:00");
+  const unavailable = Object.fromEntries((week.unavailable || []).map((u) => [u.date, u.text]));
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start); d.setDate(d.getDate() + i);
+    const iso = isoDate(d);
+    const mb = m.blocks.find((x) => x.block.day === iso);
+    const doneHere = m.blocks.find((x) => x.workout && x.workout.start_local.slice(0, 10) === iso);
+    const lbl = fmtDay(iso);
+    const cell = el("div", { class: "day" + (iso === t ? " today" : "") + (unavailable[iso] ? " off" : ""), role: "listitem" },
+      el("span", { class: "day-name", text: lbl.slice(0, 2) }),
+      el("span", { class: "day-num", text: lbl.slice(3, 5) }));
+    if (mb) {
+      cell.append(el("span", { class: `day-block tag-${mb.status}`, text: SHORT[mb.block.kind] + (mb.status === "done" ? " ✓" : "") }));
+    } else if (doneHere) {
+      cell.append(el("span", { class: "day-block tag-done", text: SHORT[doneHere.block.kind] + " ✓" }));
+    } else if (unavailable[iso]) {
+      cell.append(el("span", { class: "day-off", text: unavailable[iso].split(" – ")[0] }));
+    } else {
+      cell.append(el("span", { class: "day-rest", text: "Pause" }));
+    }
+    strip.append(cell);
+  }
+  return strip;
+}
+
 function chip(text, cls = "") { return el("span", { class: "chip " + cls, text }); }
 
 // ---------------------------------------------------------------- Heute
@@ -180,7 +213,8 @@ function renderHeute() {
   }
 
   // Nächster Baustein
-  const next = m.blocks.find((b) => b.status === "open");
+  const openByDay = byDay(m.blocks.filter((b) => b.status === "open"));
+  const next = openByDay.find((b) => !b.block.day || b.block.day >= t) || openByDay[0];
   if (wf.before) {
     colA.append(el("section", { class: "card" }, el("span", { class: "eyebrow", text: "Bald geht's los" }),
       el("strong", { class: "big", text: `Woche 1 startet am ${fmtDay(wf.week.start)}` }),
@@ -189,9 +223,9 @@ function renderHeute() {
   if (next) {
     const b = next.block;
     colA.append(el("section", { class: "card card-next" },
-      el("span", { class: "eyebrow", text: wf.before ? "Erster Baustein" : "Nächster Baustein" }),
+      el("span", { class: "eyebrow", text: b.day === t ? "Heute geplant" : b.day && b.day < t ? "Noch offen" : wf.before ? "Erster Baustein" : "Nächster Baustein" }),
       el("strong", { class: "big", text: b.substitute ? `${b.title} → ${b.substitute.title}` : b.title }),
-      el("span", { class: "muted", text: `${b.minutes} min · ${b.where}` }),
+      el("span", { class: "muted", text: `${b.minutes} min · ${when(b)}` }),
       el("span", { text: b.details }),
       el("div", { class: "row" }, btn("Ersatz", () => openErsatz(b, wf.week)))));
   } else if (!wf.before) {
@@ -220,11 +254,11 @@ function renderHeute() {
     el("div", { class: "row between" }, el("strong", { text: `Woche ${wf.week.week} · ${wf.week.focus}` }), el("span", { class: "accent-text", text: `${done} / ${active.length}` })),
     el("div", { class: "progress" }, el("div", { style: `width: ${pct}%` })));
   const list = el("ul", { class: "mini-list" });
-  for (const b of m.blocks) {
-    list.append(el("li", {}, el("span", { text: b.block.title }),
+  for (const b of byDay(m.blocks)) {
+    list.append(el("li", {}, el("span", { text: `${b.block.day ? fmtDay(b.block.day).slice(0, 2) + " · " : ""}${b.block.title}` }),
       el("span", { class: `tag tag-${b.status}`, text: b.status === "done" ? "erledigt" : b.status === "skipped" ? "weggelassen" : "offen" })));
   }
-  wk.append(list, btn("Zum Wochenplan", () => show("plan"), "btn link-btn"));
+  wk.append(dayStrip(wf.week, m), list, btn("Zum Wochenplan", () => show("plan"), "btn link-btn"));
   colB.append(wk);
 
   // Ziel und Bereitschaft
@@ -254,10 +288,11 @@ function renderPlan() {
     el("div", { class: "weeknav-title" }, el("strong", { text: `Woche ${week.week} von ${weeks.length}` }),
       el("span", { class: "muted", text: `${fmtDay(week.start)} – ${fmtDay(week.end)} · ${week.focus}` })),
     el("button", { type: "button", class: "icon-btn", "aria-label": "Nächste Woche", disabled: i === weeks.length - 1, onclick: () => { state.weekIndex = i + 1; renderPlan(); } }, "›")));
+  root.append(el("section", { class: "card" }, dayStrip(week, m)));
   if (week.note) root.append(el("p", { class: "note", text: week.note }));
 
   const grid = el("div", { class: "cards" });
-  for (const mb of m.blocks) {
+  for (const mb of byDay(m.blocks)) {
     const b = mb.block;
     const card = el("section", { class: `card block block-${mb.status}` });
     card.append(el("div", { class: "row between" }, el("strong", { text: b.title }),
@@ -269,7 +304,7 @@ function renderPlan() {
       card.append(corridorRows(ev), el("p", { class: "advice", text: ev.advice }));
       if (!fbm[mb.workout.id]) card.append(btn("Rückmeldung geben", () => openFeedback(mb.workout), "btn primary"));
     } else if (mb.status === "open") {
-      card.append(el("span", { class: "muted", text: b.where }), el("span", { text: b.details }),
+      card.append(el("span", { class: "plan-day", text: when(b) }), el("span", { text: b.details }),
         el("div", { class: "row" }, btn("Ersatz", () => openErsatz(b, week))));
     } else {
       card.append(el("span", { class: "muted", text: b.substitute?.effect || "" }),
