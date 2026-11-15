@@ -13,64 +13,84 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="src/style.css?v=2026.11.15-1">
-  <script type="module" src="src/app.js?v=2026.11.15-1"></script>
+  <link rel="stylesheet" href="src/style.css?v=2026.11.15-2">
+  <script type="module" src="src/app.js?v=2026.11.15-2"></script>
 </head>
 <body>
-  <header class="bar">
-    <h1>FitnessHelper</h1>
-    <div class="actions">
-      <button id="btn-load" type="button" title="Neu laden">↻</button>
-      <button id="btn-settings" type="button" title="Einstellungen">⚙︎</button>
+<div class="shell">
+  <nav class="sidebar" aria-label="Hauptnavigation">
+    <div class="brand"><img src="icons/icon.svg" alt="" width="36" height="36"><span>FitnessHelper</span></div>
+    <button type="button" class="nav-btn" data-view="heute">Heute</button>
+    <button type="button" class="nav-btn" data-view="plan">Plan</button>
+    <button type="button" class="nav-btn" data-view="weg">Weg</button>
+    <button type="button" class="nav-btn" data-view="fortschritt">Fortschritt</button>
+    <div class="side-foot">
+      <span id="side-countdown"></span>
+      <button type="button" class="nav-btn small" id="btn-settings-side">⚙︎ Einstellungen</button>
     </div>
-  </header>
+  </nav>
 
-  <div id="update-banner" class="update-banner" role="alert" hidden>
-    <div class="update-text">
-      <strong>Neue Version verfügbar</strong>
-      <span id="update-notes"></span>
+  <div class="main-col">
+    <header class="bar">
+      <h1 id="view-title">Heute</h1>
+      <div class="actions">
+        <button id="btn-load" type="button" aria-label="Neu laden" title="Neu laden">↻</button>
+        <button id="btn-settings" type="button" aria-label="Einstellungen" title="Einstellungen">⚙︎</button>
+      </div>
+    </header>
+
+    <div id="update-banner" class="update-banner" role="alert" hidden>
+      <div class="update-text"><strong>Neue Version verfügbar</strong><span id="update-notes"></span></div>
+      <button id="btn-update" type="button">Aktualisieren</button>
     </div>
-    <button id="btn-update" type="button">Aktualisieren</button>
+
+    <main>
+      <p id="status" class="status" role="status"></p>
+      <section id="view-heute" class="view" data-title="Heute"></section>
+      <section id="view-plan" class="view" data-title="Plan" hidden></section>
+      <section id="view-weg" class="view" data-title="Dein Weg" hidden></section>
+      <section id="view-fortschritt" class="view" data-title="Fortschritt" hidden></section>
+    </main>
   </div>
 
-  <main>
-    <p id="status" class="status" role="status"></p>
+  <nav class="tabbar" aria-label="Hauptnavigation">
+    <button type="button" class="nav-btn" data-view="heute">Heute</button>
+    <button type="button" class="nav-btn" data-view="plan">Plan</button>
+    <button type="button" class="nav-btn" data-view="weg">Weg</button>
+    <button type="button" class="nav-btn" data-view="fortschritt">Fortschritt</button>
+  </nav>
+</div>
 
-    <section id="content" hidden>
-      <div class="source-line">
-        <span id="origin"></span>
-        <span id="sample-badge" class="badge" hidden>Beispieldaten</span>
-      </div>
-      <div id="tiles" class="tiles"></div>
-      <h2>Einheiten</h2>
-      <ul id="workouts" class="workouts"></ul>
-    </section>
+<dialog id="sheet" class="sheet" aria-labelledby="sheet-title">
+  <div class="sheet-inner">
+    <div class="sheet-head">
+      <h2 id="sheet-title"></h2>
+      <button type="button" id="sheet-close" class="icon-btn" aria-label="Schließen">✕</button>
+    </div>
+    <div id="sheet-body"></div>
+    <p id="sheet-status" class="status" role="status"></p>
+  </div>
+</dialog>
 
-    <label class="file-pick">
-      JSON-Datei vom Gerät öffnen
-      <input id="file" type="file" accept="application/json,.json">
+<dialog id="settings">
+  <form id="settings-form">
+    <h2>Datenquelle</h2>
+    <label>Repository <input id="f-repo" required autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <label>Branch <input id="f-branch" required autocomplete="off" autocapitalize="off"></label>
+    <label>Daten-Ordner <input id="f-dir" required autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <label>GitHub-Token
+      <input id="f-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
     </label>
-  </main>
-
-  <dialog id="settings">
-    <form id="settings-form">
-      <h2>Datenquelle</h2>
-      <label>Repository <input id="f-repo" required autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-      <label>Branch <input id="f-branch" required autocomplete="off" autocapitalize="off"></label>
-      <label>Datei <input id="f-path" required autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-      <label>GitHub-Token (nur Lesen)
-        <input id="f-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
-      </label>
-      <label class="check"><input id="f-remember" type="checkbox"> Token auf diesem Gerät merken</label>
-      <p class="hint">Der Token bleibt nur in diesem Browser und wird ausschließlich an api.github.com gesendet.</p>
-      <p class="hint">App-Version <span id="app-version"></span> · <button id="btn-check-update" type="button" class="link-plain">Nach Update suchen</button></p>
-      <div class="row">
-        <button id="btn-forget" type="button" class="link">Token löschen</button>
-        <span class="spacer"></span>
-        <button id="btn-cancel" type="button">Abbrechen</button>
-        <button type="submit" class="primary">Speichern &amp; laden</button>
-      </div>
-    </form>
-  </dialog>
+    <label class="check"><input id="f-remember" type="checkbox"> Token auf diesem Gerät merken</label>
+    <p class="hint">Der Token bleibt nur in diesem Browser und wird ausschließlich an api.github.com gesendet. Zum Speichern deiner Rückmeldungen braucht er Schreibrecht (Contents: Read and write); die App schreibt nur in den Ordner inbox/app/.</p>
+    <p class="hint">App-Version <span id="app-version"></span> · <button id="btn-check-update" type="button" class="link-plain">Nach Update suchen</button></p>
+    <div class="row">
+      <button id="btn-forget" type="button" class="link">Token löschen</button>
+      <span class="spacer"></span>
+      <button id="btn-cancel" type="button">Abbrechen</button>
+      <button type="submit" class="primary">Speichern &amp; laden</button>
+    </div>
+  </form>
+</dialog>
 </body>
 </html>

@@ -11,16 +11,21 @@ Schlanke Web-App (iPhone/iPad, Desktop) zur Anzeige der eigenen Fitnessdaten.
 
 ## Stand
 
-Hülle: lädt `data/sample/workouts.sample.json` (oder eine andere Datei aus `data/`)
-und zeigt Kennzahlen und die Liste der Einheiten.
-Ausbau: Dashboard (Woche/Monat, Trends) → Trainingsplan → Ziele.
+Stufe 3: **Heute** (nächster Baustein, Spontan-Vorschlag, Rückmeldungen), **Plan**
+(Wochenbausteine mit Ersatz, Bewertung im Zielkorridor, „Woche leichter/fordernder“),
+**Weg** (Bereitschaft, Meilensteine) und **Fortschritt** (Stunden pro Woche, letzte Einheiten).
+iPhone: Navigation unten. iPad/breit (ab 900 px): Seitenleiste, zwei Spalten.
+
+Die App liest aus dem Daten-Ordner `plan.json`, `workouts.json`, `strength.json`,
+`feedback.json`, `choices.json` und schreibt nur nach `inbox/app/` (Rückmeldung,
+Ersatzwahl, Anpassungswunsch).
 
 ## Einrichten
 
 1. **Lese-Token erstellen:** GitHub → Settings → Developer settings →
    *Fine-grained personal access tokens* → *Generate new token*
    - Repository access: *Only select repositories* → `FitnessHelperAppData`
-   - Permissions: *Contents* → **Read-only** (sonst nichts)
+   - Permissions: *Contents* → **Read and write** (die App schreibt nur nach `inbox/app/`)
    - Ablaufdatum setzen (z. B. 1 Jahr)
 2. **App öffnen:** über GitHub Pages (Settings → Pages → Branch `main`, Ordner `/`)
    unter `https://nechromus.github.io/FitnessHelperApp/` – oder lokal:
@@ -30,7 +35,6 @@ Ausbau: Dashboard (Woche/Monat, Trends) → Trainingsplan → Ziele.
 3. ⚙︎ antippen, Token einfügen, *Speichern & laden*.
 4. Auf dem iPhone/iPad: Teilen → *Zum Home-Bildschirm*.
 
-Für die echten Daten im Feld *Datei* `data/workouts.json` eintragen.
 
 ## Updates
 
@@ -50,6 +54,7 @@ allen `?v=…`-Verweisen, damit das iPhone die neuen Dateien lädt und nicht den
 ```
 index.html            Seite, Content-Security-Policy
 src/data.js           Laden (GitHub-API), Prüfen, Zusammenfassen – ohne DOM, testbar
+src/plan.js           Plan-Logik: Zuordnung, Zielkorridor, Rückmeldungen – ohne DOM, testbar
 src/update.js         Update-Prüfung gegen version.json – ohne DOM, testbar
 src/version.js        APP_VERSION (nur über tools/bump_version.py ändern)
 version.json          aktuelle Version + Hinweistext
@@ -61,6 +66,6 @@ tests/                node-Tests und Browser-Smoke-Test
 ## Tests
 
 ```bash
-node --test tests/data.test.mjs
+node --test tests/data.test.mjs tests/plan.test.mjs
 python3 tests/smoke_browser.py          # braucht Playwright + Chrome
 ```

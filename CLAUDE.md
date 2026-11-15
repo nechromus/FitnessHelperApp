@@ -7,6 +7,6 @@
 - Laden/Rechnen in `src/data.js` (ohne DOM), Oberfläche in `src/app.js`; Texte mit textContent, nie innerHTML mit Daten.
 - Vorgaben für Aufbau und Stil: Projektdatei `claude/app-vorgaben.md`.
 - Vor jedem Commit, der die App ändert: `python3 tools/bump_version.py "was neu ist"` (Hinweistext auf Deutsch, kurz).
-- Vor jedem Commit: `node --test tests/data.test.mjs` und `python3 tests/smoke_browser.py`.
+- Vor jedem Commit: `node --test tests/data.test.mjs tests/plan.test.mjs` und `python3 tests/smoke_browser.py`.
 - Commit-Autor: `nechromus <7289214+nechromus@users.noreply.github.com>`.
 - Antworten auf Deutsch.

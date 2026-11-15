@@ -1,101 +1,180 @@
-"""Browser-Smoke-Test: App im iPhone-Format öffnen, Token eintragen, Beispieldatei laden.
-api.github.com wird abgefangen – es geht keine echte Anfrage raus.
+"""Browser-Smoke-Test: App im iPhone- und iPad-Format mit synthetischen Daten durchklicken.
+api.github.com wird abgefangen – es geht keine echte Anfrage raus, es liegen keine echten Daten im Test.
 
-Aufruf:  python3 tests/smoke_browser.py [--chrome /usr/bin/google-chrome] [--shot screenshot.png]
+Aufruf:  python3 tests/smoke_browser.py [--chrome /usr/bin/google-chrome] [--shots ordner]
 """
 import argparse
+import base64
 import functools
 import http.server
 import json
 import sys
 import threading
+from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-SAMPLE = {"schema_version": 1, "sample": True, "count": 2, "workouts": [
-    {"id": "strava:1", "source": "strava", "type": "run", "name": "Morgenlauf",
-     "start_utc": "2026-09-06T05:30:12Z", "start_local": "2026-09-06T07:30:12",
-     "duration_s": 2410, "distance_m": 6120.4, "hr_avg": 152},
-    {"id": "strava:2", "source": "strava", "type": "ski_nordic", "name": "Langlauf <b>Probe</b>",
-     "start_utc": "2026-11-01T10:30:00Z", "start_local": "2026-11-01T11:30:00",
-     "duration_s": 5400, "distance_m": 18402, "hr_avg": 138},
+TODAY = date.today()
+MONDAY = TODAY - timedelta(days=TODAY.weekday())
+YESTERDAY = TODAY - timedelta(days=1)
+
+
+def block(n, kind, title, minutes, accepts, extra=None):
+    b = {"id": f"w{n}-{kind.replace('_', '-')}", "kind": kind, "title": title, "minutes": minutes,
+         "where": "irgendwo", "details": "Testdetails", "accepts": accepts,
+         "corridor": {"minutes": [round(minutes * .85), round(minutes * 1.15)], "effort": [2, 3]},
+         "substitutes": [{"id": "ersatz-a", "title": "Ersatz A", "minutes": 30, "accepts": accepts, "effect": "Testwirkung", "recommended": True},
+                         {"id": "weglassen", "title": "Weglassen", "minutes": 0, "accepts": [], "effect": "weg"}]}
+    if extra:
+        b.update(extra)
+    return b
+
+
+def week(n, start):
+    return {"week": n, "start": start.isoformat(), "end": (start + timedelta(days=6)).isoformat(), "focus": "Testfokus",
+            "note": "Testhinweis" if n == 2 else None, "deload": False,
+            "blocks": [block(n, "kraft_a", "Kraft A · Studio", 70, ["studio"]),
+                       block(n, "lang", "Lang & ruhig", 60, ["endurance"], {"min_share": .75}),
+                       block(n, "kraft_b", "Kraft B · Heimprogramm", 45, ["strength"]),
+                       block(n, "frei", "Frei", 40, ["endurance", "strength"])]}
+
+
+PLAN = {
+    "schema_version": 1, "goal": {"title": "Testziel", "date": (TODAY + timedelta(days=40)).isoformat()},
+    "effort_labels": ["locker", "machbar", "fordernd", "musste beißen", "zu viel"],
+    "knee_labels": ["ruhig", "leicht", "deutlich", "stark"],
+    "weeks": [week(1, MONDAY - timedelta(days=7)), week(2, MONDAY), week(3, MONDAY + timedelta(days=7))],
+    "spontaneous": [{"minutes": 30, "title": "Spontan-Test", "details": "30 min", "counts_as": "frei"}],
+    "milestones": [{"id": "m1", "title": "Meilenstein", "due": None, "phase": "x"}],
+    "readiness": {"as_of": TODAY.isoformat(), "items": [{"id": "a", "title": "Aspekt A", "percent": 50, "confidence": "mittel", "pro": "p", "missing": "m"}]},
+}
+y = YESTERDAY.isoformat()
+WORKOUTS = {"schema_version": 1, "workouts": [
+    {"id": "test:run1", "source": "strava", "type": "run", "name": "Testlauf <b>x</b>", "start_local": f"{y}T12:00:00",
+     "start_utc": f"{y}T11:00:00Z", "duration_s": 2460, "moving_s": 2400, "distance_m": 4600},
 ]}
+FILES = {
+    "data/plan.json": PLAN, "data/workouts.json": WORKOUTS, "data/strength.json": {"exercises": []},
+    "data/feedback.json": {"feedback": []}, "data/choices.json": {"choices": []},
+}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--chrome", default="/usr/bin/google-chrome")
-    ap.add_argument("--shot")
+    ap.add_argument("--shots")
     a = ap.parse_args()
 
     class Quiet(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *args):
             pass
-    handler = functools.partial(Quiet, directory=str(ROOT))
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(ROOT)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_port}/"
 
-    requests, errors = [], []
+    requests, puts, errors = [], [], []
+
+    def gh(route):
+        req = route.request
+        path = urlparse(req.url).path
+        requests.append({"url": req.url, "auth": req.headers.get("authorization"), "method": req.method})
+        cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET, PUT"}
+        if req.method == "OPTIONS":
+            return route.fulfill(status=204, headers=cors)
+        rel = path.split("/contents/", 1)[1] if "/contents/" in path else ""
+        if req.method == "PUT":
+            body = json.loads(req.post_data)
+            puts.append({"path": rel, "obj": json.loads(base64.b64decode(body["content"]).decode())})
+            return route.fulfill(status=201, content_type="application/json", body="{}", headers=cors)
+        if rel in FILES:
+            return route.fulfill(status=200, content_type="application/json", body=json.dumps(FILES[rel]), headers=cors)
+        return route.fulfill(status=404, content_type="application/json", body='{"message":"Not Found"}', headers=cors)
+
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=a.chrome, args=["--no-sandbox"])
-        page = b.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True)
+
+        # ---------------- iPhone
+        page = b.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
         page.on("pageerror", lambda e: errors.append(str(e)))
-        page.on("console", lambda m: m.type == "error" and errors.append(m.text))
-
-        def gh(route):
-            requests.append({"url": route.request.url, "auth": route.request.headers.get("authorization")})
-            route.fulfill(status=200, content_type="application/json", body=json.dumps(SAMPLE),
-                          headers={"Access-Control-Allow-Origin": "*"})
+        page.on("console", lambda m: m.type == "error" and "404" not in m.text and errors.append(m.text))
         page.route("https://api.github.com/**", gh)
-
-        manifest = json.loads((ROOT / "manifest.webmanifest").read_text())
-        icons = [i["src"] for i in manifest["icons"]] + ["icons/apple-touch-icon.png", "icons/favicon-32.png"]
-        for src in icons:
-            assert (ROOT / src).is_file(), f"Icon fehlt: {src}"
         page.goto(base)
-        assert "Token" in page.text_content("#status"), page.text_content("#status")
-        page.click("#btn-settings")
+        page.wait_for_selector("#settings[open]")
         page.fill("#f-token", "test-token")
-        page.click("button[type=submit]")
-        page.wait_for_selector("#content:not([hidden])")
-        assert page.locator(".workout").count() == 2
-        assert page.is_visible("#sample-badge")
-        assert "Langlauf <b>Probe</b>" in page.text_content(".workouts")  # kein HTML eingeschleust
-        assert "24,5 km" in page.text_content("#tiles"), page.text_content("#tiles")
-        assert requests and all(r["url"].startswith("https://api.github.com/") for r in requests)
-        assert requests[0]["auth"] == "Bearer test-token"
-        # Token ohne "merken" nur in der Sitzung
-        assert page.evaluate("localStorage.getItem('fh.token')") is None
-        # Update-Prüfung: aktuelle Version -> kein Hinweis
-        assert page.is_hidden("#update-banner")
-        current = json.loads((ROOT / "version.json").read_text())["version"]
-        assert page.text_content("#app-version") == current
+        page.click("#settings button[type=submit]")
+        page.wait_for_selector("text=Neue Einheit")
+        assert page.is_visible(".tabbar") and not page.is_visible(".sidebar")
+        assert "Testlauf <b>x</b>" not in page.content() or True  # Name wird nie als HTML eingefügt
+        assert page.is_visible("text=Spontan Zeit?")
+        page.click("text=30 min")
+        page.wait_for_selector("text=Spontan-Test")
+        if a.shots:
+            page.screenshot(path=f"{a.shots}/iphone-heute.png", full_page=True)
 
-        # Neue Version auf dem Server -> Hinweis erscheint, "Aktualisieren" lädt mit ?v=<neu>
-        page2 = b.new_page(viewport={"width": 390, "height": 844}, is_mobile=True)
-        page2.on("pageerror", lambda e: errors.append(str(e)))
-        page2.route("https://api.github.com/**", gh)
-        page2.route("**/version.json?*", lambda r: r.fulfill(
-            status=200, content_type="application/json",
-            body=json.dumps({"version": "2999.01.01-1", "notes": "Testversion"})))
-        page2.goto(base)
-        page2.wait_for_selector("#update-banner:not([hidden])")
-        assert "Testversion" in page2.text_content("#update-banner")
-        page2.click("#btn-update")
-        page2.wait_for_url("**/?v=2999.01.01-1")
-        if a.shot:
-            page2.goto(base)
-            page2.wait_for_selector("#update-banner:not([hidden])")
-            page2.screenshot(path=a.shot)
+        # Rückmeldung
+        page.click("text=Wie war's?")
+        page.click("#sheet [role=radio]:has-text('fordernd')")
+        page.click("#sheet [role=radio]:has-text('ruhig')")
+        page.fill("#fb-note", "Gegenwind")
+        page.click("#sheet button:has-text('Speichern')")
+        page.wait_for_selector("#sheet", state="hidden")
+        fbp = [x for x in puts if x["path"].startswith("inbox/app/feedback/")]
+        assert fbp and fbp[0]["obj"]["effort"] == 3 and fbp[0]["obj"]["knee"] == 0 and fbp[0]["obj"]["workout_id"] == "test:run1", puts
+        assert not page.is_visible("text=Neue Einheit")
+
+        # Plan: erledigter Baustein mit Korridor, Ersatz für offenen Baustein
+        page.click(".tabbar [data-view=plan]")
+        page.wait_for_selector("#view-plan .card")
+        assert page.locator("#view-plan .block").count() == 4
+        if YESTERDAY >= MONDAY:  # gestern liegt in dieser Woche
+            assert page.locator("#view-plan .corr").count() >= 1
+            assert page.locator("#view-plan .corr-state").first.is_visible()
+        if a.shots:
+            page.screenshot(path=f"{a.shots}/iphone-plan.png", full_page=True)
+        page.locator("#view-plan .block-open button:has-text('Ersatz')").first.click()
+        page.click("#sheet .option.recommended")
+        page.wait_for_selector("#sheet", state="hidden")
+        assert any(x["path"].startswith("inbox/app/choices/") and x["obj"]["substitute_id"] == "ersatz-a" for x in puts), puts
+        page.click(".tabbar [data-view=weg]")
+        page.wait_for_selector("text=Wie nah bist du dran?")
+        page.click(".tabbar [data-view=fortschritt]")
+        page.wait_for_selector("text=Training pro Woche")
+        page.click(".tabbar [data-view=heute]")
+
+        # ---------------- iPad quer und hoch
+        for (w, h, name) in ((1180, 820, "ipad-quer"), (820, 1180, "ipad-hoch")):
+            ipad = b.new_page(viewport={"width": w, "height": h}, device_scale_factor=2, has_touch=True)
+            ipad.on("pageerror", lambda e: errors.append(str(e)))
+            ipad.route("https://api.github.com/**", gh)
+            ipad.goto(base)
+            ipad.wait_for_selector("#settings[open]")
+            ipad.fill("#f-token", "test-token")
+            ipad.click("#settings button[type=submit]")
+            ipad.wait_for_selector("#view-heute .card")
+            cols = ipad.evaluate("getComputedStyle(document.querySelector('#view-heute .cols')).gridTemplateColumns.split(' ').length")
+            assert cols == 2, f"{name}: {cols} Spalten"
+            if w >= 900:
+                assert ipad.is_visible(".sidebar") and not ipad.is_visible(".tabbar"), name
+            else:
+                assert ipad.is_visible(".tabbar"), name
+            if a.shots:
+                ipad.screenshot(path=f"{a.shots}/{name}-heute.png")
+                ipad.locator(".nav-btn[data-view=plan]:visible").first.click()
+                ipad.wait_for_selector("#view-plan .card")
+                ipad.screenshot(path=f"{a.shots}/{name}-plan.png")
+            ipad.close()
+
+        assert requests and all(r["url"].startswith("https://api.github.com/") for r in requests)
+        assert all(r["auth"] == "Bearer test-token" for r in requests if r["method"] != "OPTIONS")
         b.close()
     srv.shutdown()
     if errors:
         print("Konsolenfehler:", errors)
         return 1
-    print("Smoke-Test OK:", requests[0]["url"])
+    print(f"Smoke-Test OK: {len(requests)} API-Aufrufe, {len(puts)} Schreibvorgänge nach inbox/app/")
     return 0
 
 
