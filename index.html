@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#1e1b4b" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Fitness">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
@@ -13,8 +14,8 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="src/style.css?v=2026.11.15-3">
-  <script type="module" src="src/app.js?v=2026.11.15-3"></script>
+  <link rel="stylesheet" href="src/style.css?v=2026.11.15-4">
+  <script type="module" src="src/app.js?v=2026.11.15-4"></script>
 </head>
 <body>
 <div class="shell">
@@ -82,6 +83,13 @@
       <input id="f-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
     </label>
     <label class="check"><input id="f-remember" type="checkbox"> Token auf diesem Gerät merken</label>
+    <label>Darstellung
+      <select id="f-theme">
+        <option value="auto">Automatisch (wie das Gerät)</option>
+        <option value="light">Hell · Alpenglühen</option>
+        <option value="dark">Dunkel · Neon Night</option>
+      </select>
+    </label>
     <p class="hint">Der Token bleibt nur in diesem Browser und wird ausschließlich an api.github.com gesendet. Zum Speichern deiner Rückmeldungen braucht er Schreibrecht (Contents: Read and write); die App schreibt nur in den Ordner inbox/app/.</p>
     <p class="hint">App-Version <span id="app-version"></span> · <button id="btn-check-update" type="button" class="link-plain">Nach Update suchen</button></p>
     <div class="row">

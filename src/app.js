@@ -1,16 +1,17 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-3";
-import { APP_VERSION } from "./version.js?v=2026.11.15-3";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-3";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-4";
+import { APP_VERSION } from "./version.js?v=2026.11.15-4";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-4";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf,
-} from "./plan.js?v=2026.11.15-3";
+} from "./plan.js?v=2026.11.15-4";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
 const KEY_SETTINGS = "fh.settings";
 const KEY_TOKEN = "fh.token";
 const KEY_VIEW = "fh.view";
+const KEY_THEME = "fh.theme";
 
 // ---------------------------------------------------------------- Speicher (kann fehlen oder werfen)
 const store = {
@@ -22,6 +23,12 @@ function getSettings() {
   try { return { ...DEFAULTS, ...JSON.parse(store.get(KEY_SETTINGS) || "{}") }; } catch { return { ...DEFAULTS }; }
 }
 function getToken() { return store.get(KEY_TOKEN, sessionStorage) || store.get(KEY_TOKEN) || ""; }
+
+function applyTheme(theme) {
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+}
+applyTheme(store.get(KEY_THEME));
 
 // ---------------------------------------------------------------- Zustand
 const state = {
@@ -493,6 +500,7 @@ function openSettings() {
   $("#f-dir").value = s.dataDir || "data";
   $("#f-token").value = getToken();
   $("#f-remember").checked = !!store.get(KEY_TOKEN);
+  $("#f-theme").value = store.get(KEY_THEME) || "auto";
   $("#settings").showModal();
 }
 function saveSettings(ev) {
@@ -501,6 +509,8 @@ function saveSettings(ev) {
   const token = $("#f-token").value.trim();
   store.del(KEY_TOKEN);
   if (token) store.set(KEY_TOKEN, token, $("#f-remember").checked ? localStorage : sessionStorage);
+  store.set(KEY_THEME, $("#f-theme").value);
+  applyTheme($("#f-theme").value);
   $("#settings").close();
   loadAll();
 }
