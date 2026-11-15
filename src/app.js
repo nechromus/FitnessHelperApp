@@ -1,4 +1,6 @@
-import { DEFAULTS, TYPE_LABELS, loadFromGitHub, parseDoc, summarize, fmtDuration, fmtKm, fmtDate } from "./data.js";
+import { DEFAULTS, TYPE_LABELS, loadFromGitHub, parseDoc, summarize, fmtDuration, fmtKm, fmtDate } from "./data.js?v=2026.11.15-1";
+import { APP_VERSION } from "./version.js?v=2026.11.15-1";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-1";
 
 const $ = (sel) => document.querySelector(sel);
 const KEY_SETTINGS = "fh.settings";
@@ -115,7 +117,47 @@ function saveSettings(ev) {
   loadRemote();
 }
 
+// ---------------------------------------------------------------- Update-Prüfung
+
+const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
+let pendingUpdate = null;
+let lastCheck = 0;
+
+async function runUpdateCheck(manual = false) {
+  lastCheck = Date.now();
+  try {
+    const found = await checkForUpdate(APP_VERSION);
+    if (found) {
+      pendingUpdate = found;
+      $("#update-notes").textContent = found.notes ? ` – ${found.notes}` : ` (${found.version})`;
+      $("#update-banner").hidden = false;
+    } else if (manual) {
+      setStatus(`App ist aktuell (Version ${APP_VERSION}).`, "ok");
+    }
+  } catch (e) {
+    if (manual) setStatus(`Update-Prüfung fehlgeschlagen: ${e.message}`, "error");
+  }
+}
+
+function applyUpdate() {
+  if (!pendingUpdate) return;
+  location.replace(reloadUrl(location.href, pendingUpdate.version));
+}
+
+function startUpdateChecks() {
+  $("#app-version").textContent = APP_VERSION;
+  $("#btn-update").addEventListener("click", applyUpdate);
+  $("#btn-check-update").addEventListener("click", () => runUpdateCheck(true));
+  runUpdateCheck();
+  setInterval(() => runUpdateCheck(), UPDATE_INTERVAL_MS);
+  // Beim Zurückkehren in die App (iPhone: App aus dem Hintergrund) erneut prüfen
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && Date.now() - lastCheck > 60 * 1000) runUpdateCheck();
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  startUpdateChecks();
   $("#btn-load").addEventListener("click", loadRemote);
   $("#btn-settings").addEventListener("click", openSettings);
   $("#settings-form").addEventListener("submit", saveSettings);

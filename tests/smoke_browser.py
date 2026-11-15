@@ -69,8 +69,27 @@ def main():
         assert requests[0]["auth"] == "Bearer test-token"
         # Token ohne "merken" nur in der Sitzung
         assert page.evaluate("localStorage.getItem('fh.token')") is None
+        # Update-Prüfung: aktuelle Version -> kein Hinweis
+        assert page.is_hidden("#update-banner")
+        current = json.loads((ROOT / "version.json").read_text())["version"]
+        assert page.text_content("#app-version") == current
+
+        # Neue Version auf dem Server -> Hinweis erscheint, "Aktualisieren" lädt mit ?v=<neu>
+        page2 = b.new_page(viewport={"width": 390, "height": 844}, is_mobile=True)
+        page2.on("pageerror", lambda e: errors.append(str(e)))
+        page2.route("https://api.github.com/**", gh)
+        page2.route("**/version.json?*", lambda r: r.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"version": "2999.01.01-1", "notes": "Testversion"})))
+        page2.goto(base)
+        page2.wait_for_selector("#update-banner:not([hidden])")
+        assert "Testversion" in page2.text_content("#update-banner")
+        page2.click("#btn-update")
+        page2.wait_for_url("**/?v=2999.01.01-1")
         if a.shot:
-            page.screenshot(path=a.shot, full_page=True)
+            page2.goto(base)
+            page2.wait_for_selector("#update-banner:not([hidden])")
+            page2.screenshot(path=a.shot)
         b.close()
     srv.shutdown()
     if errors:

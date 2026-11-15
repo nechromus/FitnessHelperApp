@@ -49,3 +49,44 @@ test("Zusammenfassung und Formatierung", () => {
   assert.equal(fmtKm(0), "–");
   assert.equal(fmtDate("2026-09-06T07:30:12"), "06.09.2026");
 });
+
+// ---------------------------------------------------------------- Update-Prüfung
+import { compareVersions, checkForUpdate, reloadUrl } from "../src/update.js";
+import { APP_VERSION } from "../src/version.js";
+import { readFileSync, readdirSync } from "node:fs";
+
+test("Versionen vergleichen", () => {
+  assert.equal(compareVersions("2026.11.15-2", "2026.11.15-1"), 1);
+  assert.equal(compareVersions("2026.11.15-10", "2026.11.15-9"), 1);
+  assert.equal(compareVersions("2026.12.01-1", "2026.11.30-5"), 1);
+  assert.equal(compareVersions("2026.11.15-1", "2026.11.15-1"), 0);
+  assert.equal(compareVersions("2026.11.14-3", "2026.11.15-1"), -1);
+});
+
+test("Update wird nur bei neuerer Version gemeldet", async () => {
+  const mk = (v) => async (url, opts) => {
+    assert.match(url, /^version\.json\?t=\d+$/);
+    assert.equal(opts.cache, "no-store");
+    return { ok: true, json: async () => ({ version: v, notes: "Neu" }) };
+  };
+  assert.deepEqual(await checkForUpdate("2026.11.15-1", mk("2026.11.15-2")), { version: "2026.11.15-2", notes: "Neu" });
+  assert.equal(await checkForUpdate("2026.11.15-1", mk("2026.11.15-1")), null);
+  assert.equal(await checkForUpdate("2026.11.15-2", mk("2026.11.15-1")), null);
+  await assert.rejects(checkForUpdate("1", async () => ({ ok: false, status: 404 })), /404/);
+});
+
+test("Neuladen-URL umgeht den Cache", () => {
+  assert.equal(reloadUrl("https://x.github.io/App/?v=old#a", "2026.11.15-2"), "https://x.github.io/App/?v=2026.11.15-2");
+});
+
+test("Versionsangaben sind überall gleich", () => {
+  const root = new URL("..", import.meta.url);
+  const vj = JSON.parse(readFileSync(new URL("version.json", root), "utf8")).version;
+  assert.equal(APP_VERSION, vj);
+  const files = ["index.html", ...readdirSync(new URL("src/", root)).filter((f) => f.endsWith(".js")).map((f) => "src/" + f)];
+  for (const f of files) {
+    for (const m of readFileSync(new URL(f, root), "utf8").matchAll(/\?v=([\d.-]+)/g)) {
+      assert.equal(m[1], vj, `${f} verweist auf ?v=${m[1]}`);
+    }
+  }
+});

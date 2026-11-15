@@ -51,3 +51,12 @@ dialog input:not([type=checkbox]) {
 dialog button { font: inherit; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
 dialog button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 dialog button.link { border: 0; background: none; color: var(--err); padding: 0; }
+.update-banner {
+  position: sticky; top: calc(env(safe-area-inset-top) + 64px); z-index: 2; margin: 0 auto; max-width: 900px;
+  display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: var(--accent); color: #fff; border-radius: 0 0 14px 14px;
+}
+.update-banner[hidden] { display: none; }
+.update-text { font-size: .9rem; }
+.update-banner button { font: inherit; font-weight: 600; min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #fff; color: var(--accent); }
+.link-plain { font: inherit; border: 0; background: none; color: var(--accent); padding: 0; min-height: 0; text-decoration: underline; }

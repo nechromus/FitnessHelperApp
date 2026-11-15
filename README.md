@@ -32,11 +32,27 @@ Ausbau: Dashboard (Woche/Monat, Trends) → Trainingsplan → Ziele.
 
 Für die echten Daten im Feld *Datei* `data/workouts.json` eintragen.
 
+## Updates
+
+Die App prüft beim Start, beim Zurückkehren aus dem Hintergrund und alle 15 Minuten
+`version.json` auf dem Server. Ist dort eine neuere Version, erscheint oben
+„Neue Version verfügbar – Aktualisieren“. Manuell: ⚙︎ → „Nach Update suchen“.
+
+**Vor jedem Commit, der die App ändert:**
+```bash
+python3 tools/bump_version.py "Kurz, was neu ist"
+```
+Das setzt die Version (JJJJ.MM.TT-N) in `version.json`, `src/version.js` und an
+allen `?v=…`-Verweisen, damit das iPhone die neuen Dateien lädt und nicht den Cache.
+
 ## Aufbau
 
 ```
 index.html            Seite, Content-Security-Policy
 src/data.js           Laden (GitHub-API), Prüfen, Zusammenfassen – ohne DOM, testbar
+src/update.js         Update-Prüfung gegen version.json – ohne DOM, testbar
+src/version.js        APP_VERSION (nur über tools/bump_version.py ändern)
+version.json          aktuelle Version + Hinweistext
 src/app.js            Oberfläche
 src/style.css         Stil (hell/dunkel, Handy zuerst)
 tests/                node-Tests und Browser-Smoke-Test

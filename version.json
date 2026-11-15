@@ -1,0 +1,4 @@
+{
+ "version": "2026.11.15-1",
+ "notes": "Die App prüft jetzt selbst, ob es eine neue Version gibt."
+}

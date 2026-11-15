@@ -6,15 +6,15 @@
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Fitness">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://api.github.com; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <title>FitnessHelper</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="src/style.css">
-  <script type="module" src="src/app.js"></script>
+  <link rel="stylesheet" href="src/style.css?v=2026.11.15-1">
+  <script type="module" src="src/app.js?v=2026.11.15-1"></script>
 </head>
 <body>
   <header class="bar">
@@ -24,6 +24,14 @@
       <button id="btn-settings" type="button" title="Einstellungen">⚙︎</button>
     </div>
   </header>
+
+  <div id="update-banner" class="update-banner" role="alert" hidden>
+    <div class="update-text">
+      <strong>Neue Version verfügbar</strong>
+      <span id="update-notes"></span>
+    </div>
+    <button id="btn-update" type="button">Aktualisieren</button>
+  </div>
 
   <main>
     <p id="status" class="status" role="status"></p>
@@ -55,6 +63,7 @@
       </label>
       <label class="check"><input id="f-remember" type="checkbox"> Token auf diesem Gerät merken</label>
       <p class="hint">Der Token bleibt nur in diesem Browser und wird ausschließlich an api.github.com gesendet.</p>
+      <p class="hint">App-Version <span id="app-version"></span> · <button id="btn-check-update" type="button" class="link-plain">Nach Update suchen</button></p>
       <div class="row">
         <button id="btn-forget" type="button" class="link">Token löschen</button>
         <span class="spacer"></span>
