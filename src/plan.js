@@ -28,13 +28,20 @@ export function warmupsFor(w, workouts, studioDays = null) {
   const day = w.start_local.slice(0, 10);
   return (workouts || []).filter((o) => {
     if (o.id === w.id || o.duplicate_of || !o.start_local || o.start_local.slice(0, 10) !== day) return false;
-    if (!["ride"].includes(o.type)) return false;
+    if (o.type !== "ride" || !isIndoorRide(o)) return false;
     const start = Date.parse(o.start_utc);
     const end = start + minutesOf(o) * 60000;
     const before = end <= t0 + 5 * 60000 && end >= t0 - 30 * 60000;
     const inside = start >= t0 - 5 * 60000 && start <= t0 + minutesOf(w) * 60000 && minutesOf(o) <= 30;
     return before || inside;
   });
+}
+
+/** Ergometer im Studio (nicht die Radfahrt dorthin): Technogym-Gerät, Indoor/virtuell oder ohne Höhenmeter mit Gerätenamen. */
+export function isIndoorRide(o) {
+  if (o.source === "technogym" || o.trainer === true) return true;
+  if (/virtual/i.test(o.source_type || "")) return true;
+  return /technogym|excite|ergometer|indoor|studio|spinning/i.test(o.name || "");
 }
 
 /** Ids aller Rad-Aufwärmeinheiten (werden nicht einzeln aufgeführt). */

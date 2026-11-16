@@ -28,7 +28,7 @@ const W = (id, type, source, start_local, mins, extra = {}) => ({
   duration_s: mins * 60, moving_s: mins * 60, ...extra,
 });
 const workouts = [
-  W("strava:1", "ride", "strava", "2026-11-16T11:32:00", 14),
+  W("strava:1", "ride", "strava", "2026-11-16T11:32:00", 14, { name: "Bike 700 Excite Live: Cross training" }),
   W("technogym:session-2026-11-16", "strength", "technogym", "2026-11-16T11:47:00", 45),
   W("strava:2", "run", "strava", "2026-11-19T12:10:00", 41, { distance_m: 4600 }),
   W("strava:3", "run", "strava", "2026-11-21T10:00:00", 62, { distance_m: 7400 }),
@@ -139,7 +139,7 @@ test("Rad-Aufwärmen zählt zum Studio, auch wenn die Uhr schon vorher läuft", 
     { id: "w1-frei", kind: "frei", title: "Wahl", minutes: 40, accepts: ["endurance", "strength"], corridor: { minutes: [34, 46] }, substitutes: [] }] };
   const ws = [
     { id: "s", type: "strength", source: "strava", start_local: "2030-01-07T11:00:00", start_utc: "2030-01-07T10:00:00Z", duration_s: 3300 },
-    { id: "r", type: "ride", source: "strava", start_local: "2030-01-07T11:01:00", start_utc: "2030-01-07T10:01:00Z", duration_s: 840, moving_s: 840 }];
+    { id: "r", type: "ride", source: "strava", name: "Bike 700 Excite Live", start_local: "2030-01-07T11:01:00", start_utc: "2030-01-07T10:01:00Z", duration_s: 840, moving_s: 840 }];
   const m = matchWeek(week, ws, {}, new Set(["2030-01-07"]));
   assert.equal(m.blocks[0].status, "done");
   assert.deepEqual(m.blocks[0].parts.map((p) => p.id), ["r"]);
@@ -149,10 +149,18 @@ test("Rad-Aufwärmen zählt zum Studio, auch wenn die Uhr schon vorher läuft", 
 test("Rad-Aufwärmen wird nicht einzeln geführt und braucht keine eigene Rückmeldung", () => {
   const ws = [
     { id: "s", type: "strength", source: "strava", start_local: "2030-01-07T11:00:00", start_utc: "2030-01-07T10:00:00Z", duration_s: 3300 },
-    { id: "r", type: "ride", source: "strava", start_local: "2030-01-07T11:01:00", start_utc: "2030-01-07T10:01:00Z", duration_s: 840 },
+    { id: "r", type: "ride", source: "strava", name: "Bike 700 Excite Live", start_local: "2030-01-07T11:01:00", start_utc: "2030-01-07T10:01:00Z", duration_s: 840 },
     { id: "r2", type: "ride", source: "strava", start_local: "2030-01-07T18:00:00", start_utc: "2030-01-07T17:00:00Z", duration_s: 3600 }];
   const ids = warmupIds(ws, new Set(["2030-01-07"]));
   assert.deepEqual([...ids], ["r"]);
   const plan = { weeks: [{ start: "2030-01-07" }] };
   assert.deepEqual(pendingFeedback(ws, {}, plan, "2030-01-08", 10, ids).map((w) => w.id), ["r2", "s"]);
+});
+
+test("Radfahrt ins Studio bleibt eigene Einheit, Ergometer zählt zum Krafttraining", () => {
+  const ws = [
+    { id: "s", type: "strength", source: "strava", start_local: "2030-01-07T11:00:00", start_utc: "2030-01-07T10:00:00Z", duration_s: 3300 },
+    { id: "hin", type: "ride", source: "strava", name: "Mittagsradfahrt", start_local: "2030-01-07T10:40:00", start_utc: "2030-01-07T09:40:00Z", duration_s: 1080, elevation_gain_m: 12 },
+    { id: "ergo", type: "ride", source: "strava", name: "Bike 700 Excite Live: Cross training", start_local: "2030-01-07T11:01:00", start_utc: "2030-01-07T10:01:00Z", duration_s: 840 }];
+  assert.deepEqual([...warmupIds(ws, new Set(["2030-01-07"]))], ["ergo"]);
 });
