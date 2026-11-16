@@ -132,3 +132,16 @@ test("Uhr-Krafttraining zählt als Studio, wenn es Gerätewerte vom Tag gibt", (
   assert.deepEqual(categories(w), ["strength"]);
   assert.deepEqual(categories(w, new Set(["2030-01-07"])), ["studio", "strength"]);
 });
+
+test("Rad-Aufwärmen zählt zum Studio, auch wenn die Uhr schon vorher läuft", () => {
+  const week = { week: 1, start: "2030-01-07", end: "2030-01-13", blocks: [
+    { id: "w1-kraft-a", kind: "kraft_a", title: "Kraft A", minutes: 70, accepts: ["studio"], corridor: { minutes: [60, 80] }, substitutes: [] },
+    { id: "w1-frei", kind: "frei", title: "Wahl", minutes: 40, accepts: ["endurance", "strength"], corridor: { minutes: [34, 46] }, substitutes: [] }] };
+  const ws = [
+    { id: "s", type: "strength", source: "strava", start_local: "2030-01-07T11:00:00", start_utc: "2030-01-07T10:00:00Z", duration_s: 3300 },
+    { id: "r", type: "ride", source: "strava", start_local: "2030-01-07T11:01:00", start_utc: "2030-01-07T10:01:00Z", duration_s: 840, moving_s: 840 }];
+  const m = matchWeek(week, ws, {}, new Set(["2030-01-07"]));
+  assert.equal(m.blocks[0].status, "done");
+  assert.deepEqual(m.blocks[0].parts.map((p) => p.id), ["r"]);
+  assert.equal(m.blocks[1].status, "open");
+});

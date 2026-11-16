@@ -112,7 +112,11 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null) {
         for (const o of pool) {
           if (used.has(o.id) || !categories(o).includes("endurance")) continue;
           const end = Date.parse(o.start_utc) + minutesOf(o) * 60000;
-          if (o.start_local.slice(0, 10) === w.start_local.slice(0, 10) && end <= t0 + 5 * 60000 && end >= t0 - 30 * 60000) {
+          const start = Date.parse(o.start_utc);
+          const before = end <= t0 + 5 * 60000 && end >= t0 - 30 * 60000;
+          // Uhr läuft schon beim Aufwärmen: kurze Radeinheit innerhalb des Krafttrainings
+          const inside = start >= t0 - 5 * 60000 && start <= t0 + minutesOf(w) * 60000 && minutesOf(o) <= 30;
+          if (o.start_local.slice(0, 10) === w.start_local.slice(0, 10) && (before || inside)) {
             parts.push(o); used.add(o.id);
           }
         }

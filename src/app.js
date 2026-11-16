@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.16-1";
-import { APP_VERSION } from "./version.js?v=2026.11.16-1";
-import { figure } from "./figures.js?v=2026.11.16-1";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.16-1";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.16-1";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.16-2";
+import { APP_VERSION } from "./version.js?v=2026.11.16-2";
+import { figure } from "./figures.js?v=2026.11.16-2";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.16-2";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.16-2";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf,
-} from "./plan.js?v=2026.11.16-1";
+} from "./plan.js?v=2026.11.16-2";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
