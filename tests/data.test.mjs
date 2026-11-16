@@ -104,3 +104,31 @@ test("Fotos nur nach inbox/app/photos/*.jpg, als Base64 an api.github.com", asyn
     await assert.rejects(() => putPhoto(DEFAULTS, bad, bytes, "t", "m", fake));
   }
 });
+
+import { memoryStore, flush, isNetworkError, summarize as outboxSummary } from "../src/outbox.js";
+
+test("Ausgang: Netzfehler bricht ab, später geht alles raus", async () => {
+  const s = memoryStore();
+  await s.add({ kind: "photo", path: "inbox/app/photos/a.jpg", created_at: "2030-01-01T10:00:00Z" });
+  await s.add({ kind: "json", path: "inbox/app/photos/a.json", created_at: "2030-01-01T10:00:01Z" });
+  await s.add({ kind: "json", path: "inbox/app/feedback/b.json", created_at: "2030-01-01T10:00:02Z" });
+  assert.equal(outboxSummary(await s.all()), "1 Foto, 1 Rückmeldung");
+  const offline = async () => { throw new TypeError("Load failed"); };
+  let r = await flush(s, offline);
+  assert.deepEqual([r.sent, r.left], [0, 3]);
+  const sent = [];
+  r = await flush(s, async (i) => { sent.push(i.path); });
+  assert.deepEqual([r.sent, r.left], [3, 0]);
+  assert.deepEqual(sent, ["inbox/app/photos/a.jpg", "inbox/app/photos/a.json", "inbox/app/feedback/b.json"]);
+});
+
+test("Ausgang: echte Fehler (z. B. 403) bleiben mit Vermerk liegen, Rest geht weiter", async () => {
+  const s = memoryStore();
+  await s.add({ kind: "json", path: "x", created_at: "1" });
+  await s.add({ kind: "json", path: "y", created_at: "2" });
+  const r = await flush(s, async (i) => { if (i.path === "x") throw new Error("Keine Berechtigung (403)"); });
+  assert.deepEqual([r.sent, r.left], [1, 1]);
+  assert.match((await s.all())[0].last_error, /403/);
+  assert.equal(isNetworkError(new Error("x")), false);
+  assert.equal(isNetworkError(new Error("x"), false), true);
+});

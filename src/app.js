@@ -1,11 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.15-8";
-import { APP_VERSION } from "./version.js?v=2026.11.15-8";
-import { figure } from "./figures.js?v=2026.11.15-8";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.15-8";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.16-1";
+import { APP_VERSION } from "./version.js?v=2026.11.16-1";
+import { figure } from "./figures.js?v=2026.11.16-1";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.16-1";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.16-1";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf,
-} from "./plan.js?v=2026.11.15-8";
+} from "./plan.js?v=2026.11.16-1";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -34,7 +35,7 @@ applyTheme(store.get(KEY_THEME));
 
 // ---------------------------------------------------------------- Zustand
 const state = {
-  plan: null, workouts: [], strength: [], feedback: [], choices: [], photos: [], loaded: false,
+  plan: null, workouts: [], strength: [], feedback: [], choices: [], photos: [], outbox: [], loaded: false,
   view: store.get(KEY_VIEW) || "heute", weekIndex: null, spontan: null,
 };
 const today = () => isoDate(new Date());
@@ -91,6 +92,7 @@ async function loadAll() {
     state.choices = [...(cdoc.choices || []), ...pending.filter((x) => x && x.block_id && x.substitute_id)];
     const pPending = await Promise.all(pInbox.slice(-20).map((p) => loadJson(settings, p, token, null).catch(() => null)));
     state.photos = [...(pdoc.photos || []), ...pPending.filter((x) => x && x.file)];
+    mergeOutbox();
     state.loaded = true;
     setStatus(plan ? "" : "Noch kein Trainingsplan im Daten-Repo (plan.json fehlt).", plan ? "" : "warn");
   } catch (e) {
@@ -99,8 +101,79 @@ async function loadAll() {
   render();
 }
 
-async function save(path, obj, message) {
-  await putJson(getSettings(), path, obj, getToken(), message);
+// ---------------------------------------------------------------- Ausgang (offline zwischenspeichern)
+let outbox = memoryStore();
+let flushing = false;
+const UPLOAD_TIMEOUT_MS = 45 * 1000;
+function timedFetch(url, opts = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), UPLOAD_TIMEOUT_MS);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+const online = () => navigator.onLine !== false;
+
+async function refreshOutbox() {
+  try { state.outbox = await outbox.all(); } catch { state.outbox = []; }
+  render();
+}
+
+/** Noch nicht hochgeladene Einträge in die Anzeige übernehmen (nach dem Laden aus dem Repo). */
+function mergeOutbox() {
+  for (const it of state.outbox || []) {
+    if (it.kind !== "json") continue;
+    if (it.path.startsWith("inbox/app/feedback/") && !state.feedback.some((f) => f.created_at === it.obj.created_at && f.workout_id === it.obj.workout_id)) state.feedback.push(it.obj);
+    if (it.path.startsWith("inbox/app/choices/") && !state.choices.some((c) => c.created_at === it.obj.created_at && c.block_id === it.obj.block_id)) state.choices.push(it.obj);
+    if (it.path.startsWith("inbox/app/photos/") && !state.photos.some((p) => p.file === it.obj.file)) state.photos.push(it.obj);
+  }
+}
+
+function sendItem(item) {
+  if (item.kind === "photo") return putPhoto(getSettings(), item.path, item.bytes, getToken(), item.message, timedFetch);
+  return putJson(getSettings(), item.path, item.obj, getToken(), item.message, timedFetch);
+}
+
+async function queue(item) {
+  await outbox.add({ ...item, created_at: new Date().toISOString() });
+}
+
+/** Speichern nach inbox/app/; ohne Empfang landet es im Ausgang. Liefert { queued }. */
+async function save(path, obj, message, { later = false } = {}) {
+  const item = { kind: "json", path, obj, message };
+  if (!later) {
+    try { await sendItem(item); return { queued: false }; } catch (e) { if (!isNetworkError(e, online())) throw e; }
+  }
+  await queue(item);
+  await refreshOutbox();
+  return { queued: true };
+}
+
+async function flushNow(manual = false) {
+  if (flushing || !(state.outbox || []).length) return;
+  if (!getToken()) return;
+  flushing = true;
+  if (manual) setStatus("Lade hoch …");
+  try {
+    const before = state.outbox.length;
+    const r = await flush(outbox, sendItem, online());
+    await refreshOutbox();
+    if (r.sent && !r.left) setStatus(`Hochgeladen: ${before === 1 ? "1 Eintrag" : `${before} Einträge`}.`, "ok");
+    else if (manual && r.error) setStatus(isNetworkError(r.error, online()) ? "Noch kein Empfang – bleibt auf dem Gerät und wird später hochgeladen." : r.error.message, isNetworkError(r.error, online()) ? "warn" : "error");
+  } finally { flushing = false; }
+}
+
+/** Hinweis auf der Startseite: was liegt noch auf dem Gerät? */
+function outboxCard() {
+  const items = state.outbox || [];
+  if (!items.length) return null;
+  const errs = items.filter((i) => i.last_error);
+  return el("section", { class: "card card-outbox", role: "status" },
+    el("span", { class: "eyebrow", text: "Noch nicht hochgeladen" }),
+    el("strong", { text: outboxSummary(items) }),
+    el("span", { class: "muted small", text: outbox.persistent
+      ? "Liegt sicher auf diesem Gerät und wird automatisch hochgeladen, sobald Empfang da ist."
+      : "Nur bis zum Schließen der App gespeichert – bitte bald hochladen." }),
+    errs.length ? el("span", { class: "small st-below", text: `Fehler: ${errs[0].last_error}` }) : null,
+    btn("Jetzt hochladen", () => flushNow(true), "btn primary"));
 }
 
 // ---------------------------------------------------------------- Navigation
@@ -134,7 +207,7 @@ function currentWeek() {
   return wf;
 }
 function matched(week) {
-  return matchWeek(week, state.workouts, latestChoices(state.choices));
+  return matchWeek(week, state.workouts, latestChoices(state.choices), new Set(state.strength.map((e) => e.start_local.slice(0, 10))));
 }
 function fb() { return latestFeedback(state.feedback); }
 function labels() { return state.plan?.effort_labels || ["locker", "machbar", "fordernd", "musste beißen", "zu viel"]; }
@@ -220,6 +293,9 @@ function renderHeute() {
 
   const days = daysUntil(state.plan.goal.date, t);
   root.append(el("p", { class: "dateline", text: new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }) }));
+
+  const ob = outboxCard();
+  if (ob) colA.append(ob);
 
   // Rückmeldungen
   for (const w of pendingFeedback(state.workouts, fbm, state.plan, t).slice(0, 3)) {
@@ -619,6 +695,8 @@ function renderTraining() {
       el("strong", { class: "big", text: b.substitute && !b.skipped ? `${b.title} → ${b.substitute.title}` : b.title }),
       blockDetail(mb, week, kind === "heute")));
   }
+  const ob = outboxCard();
+  if (ob) colB.append(ob);
   const t = today();
   const shots = state.photos.filter((p) => (p.day || p.created_at.slice(0, 10)) === t);
   colB.append(el("section", { class: "card" },
@@ -674,34 +752,55 @@ async function openPhoto(files, ctx) {
   const note = el("input", { type: "text", id: "photo-note", maxlength: "200", placeholder: "z. B. Beinstrecker, 3. Satz" });
   const n = canvases.length;
   const up = btn(n === 1 ? "Hochladen" : `${n} Fotos hochladen`, null, "btn primary full");
-  let done = 0;
-  up.addEventListener("click", async () => {
-    up.disabled = true;
+  const laterBtn = btn("Erst mal behalten, später hochladen", null, "btn full");
+  let done = 0, queued = 0;
+  const run = async (later) => {
+    up.disabled = true; laterBtn.disabled = true;
     try {
       for (; done < n; done++) {
-        sheetStatus(n === 1 ? "Lade hoch …" : `Lade Foto ${done + 1} von ${n} hoch …`);
+        sheetStatus(later ? "Speichere auf dem Gerät …" : n === 1 ? "Lade hoch …" : `Lade Foto ${done + 1} von ${n} hoch …`);
         const c = canvases[done];
         const blob = await new Promise((res, rej) => c.toBlob((x) => (x ? res(x) : rej(new Error("Bild konnte nicht erzeugt werden"))), "image/jpeg", 0.82));
         const bytes = new Uint8Array(await blob.arrayBuffer());
         const id = [ctx.block_id || ctx.workout_id || "foto", ctx.exercise, n > 1 ? done + 1 : null].filter(Boolean).join("_");
         const base = inboxName("inbox/app/photos", id).replace(/\.json$/, "");
-        await putPhoto(getSettings(), `${base}.jpg`, bytes, getToken(), `App: Foto ${id}`);
         const meta = { file: `${base}.jpg`, block_id: ctx.block_id || null, workout_id: ctx.workout_id || null,
           exercise: ctx.exercise || null, exercise_name: ctx.exercise_name || null, day: today(),
           note: note.value.trim() || null, created_at: new Date().toISOString(), source: "app" };
-        await save(`${base}.json`, meta, "App: Foto-Info");
+        const photoItem = { kind: "photo", path: `${base}.jpg`, bytes, message: `App: Foto ${id}` };
+        let toQueue = later;
+        if (!later) {
+          try { await sendItem(photoItem); } catch (e) {
+            if (!isNetworkError(e, online())) throw e;
+            toQueue = later = true; // kein Empfang: diesen und alle weiteren auf dem Gerät behalten
+          }
+        }
+        if (toQueue) {
+          await queue(photoItem);
+          await queue({ kind: "json", path: `${base}.json`, obj: meta, message: "App: Foto-Info" });
+          queued++;
+        } else {
+          const r = await save(`${base}.json`, meta, "App: Foto-Info");
+          if (r.queued) queued++;
+        }
         state.photos.push(meta);
       }
+      await refreshOutbox();
+      const what = n === 1 ? "Foto" : `${n} Fotos`;
       $("#sheet-body").replaceChildren(el("div", { class: "sheet-content" },
-        el("p", { text: `${n === 1 ? "Foto" : `${n} Fotos`} gespeichert. Claude liest sie beim nächsten Abgleich aus und übernimmt die Werte.` }),
+        el("p", { text: queued
+          ? `${what} auf dem Gerät gespeichert. Hochgeladen wird automatisch, sobald Empfang da ist – oder auf der Startseite mit „Jetzt hochladen“.`
+          : `${what} hochgeladen. Claude liest sie beim nächsten Abgleich aus und übernimmt die Werte.` }),
         btn("Weitere Fotos", () => pickPhoto(ctx), "btn")));
-      sheetStatus("Gespeichert.", "ok");
+      sheetStatus(queued ? "Auf dem Gerät gespeichert." : "Gespeichert.", queued ? "warn" : "ok");
       render();
-    } catch (e) { sheetStatus(`${e.message}${done ? ` – ${done} von ${n} gespeichert` : ""}`, "error"); up.disabled = false; }
-  });
+    } catch (e) { sheetStatus(`${e.message}${done ? ` – ${done} von ${n} gespeichert` : ""}`, "error"); up.disabled = false; laterBtn.disabled = false; }
+  };
+  up.addEventListener("click", () => run(false));
+  laterBtn.addEventListener("click", () => run(true));
   openSheet(n === 1 ? "Foto vom Gerät" : `${n} Fotos vom Gerät`, el("div", { class: "sheet-content" },
     ctx.label ? el("p", { class: "muted", text: ctx.label }) : null,
-    el("div", { class: n > 1 ? "photo-grid" : "" }, ...canvases), el("label", { class: "field" }, "Notiz (optional, gilt für alle)", note), up,
+    el("div", { class: n > 1 ? "photo-grid" : "" }, ...canvases), el("label", { class: "field" }, "Notiz (optional, gilt für alle)", note), up, laterBtn,
     el("span", { class: "muted small", text: "Wird verkleinert und ohne Ortsdaten nur in dein privates Daten-Repo geschrieben." })));
 }
 
@@ -788,10 +887,10 @@ function openRequest(week, request) {
     go.disabled = true;
     sheetStatus("Speichere …");
     try {
-      await save(inboxName("inbox/app/requests", `w${week.week}-${request}`),
+      const r = await save(inboxName("inbox/app/requests", `w${week.week}-${request}`),
         { week: week.week, request, created_at: new Date().toISOString(), source: "app" },
         `App: Woche ${week.week} ${request}`);
-      $("#sheet-body").replaceChildren(el("p", { text: "Wunsch gespeichert. Claude passt den Plan beim nächsten Abgleich an – du siehst die Änderung dann hier." }));
+      $("#sheet-body").replaceChildren(el("p", { text: (r.queued ? "Wunsch auf dem Gerät gespeichert, wird hochgeladen, sobald Empfang da ist. " : "Wunsch gespeichert. ") + "Claude passt den Plan beim nächsten Abgleich an – du siehst die Änderung dann hier." }));
       sheetStatus("Gespeichert.", "ok");
     } catch (e) { sheetStatus(e.message, "error"); go.disabled = false; }
   });
@@ -857,6 +956,10 @@ function startUpdateChecks() {
 // ---------------------------------------------------------------- Start
 document.addEventListener("DOMContentLoaded", () => {
   startUpdateChecks();
+  openStore().then(async (s) => { outbox = s; await refreshOutbox(); mergeOutbox(); flushNow(); });
+  window.addEventListener("online", () => flushNow());
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") flushNow(); });
+  setInterval(() => flushNow(), 2 * 60 * 1000);
   for (const b of $$(".nav-btn[data-view]")) b.addEventListener("click", () => show(b.dataset.view));
   $("#btn-load").addEventListener("click", loadAll);
   $("#btn-settings").addEventListener("click", openSettings);

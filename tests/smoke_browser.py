@@ -89,6 +89,7 @@ def main():
     base = f"http://127.0.0.1:{srv.server_port}/"
 
     requests, puts, errors = [], [], []
+    state_offline = {"on": False}
 
     def gh(route):
         req = route.request
@@ -98,6 +99,8 @@ def main():
         if req.method == "OPTIONS":
             return route.fulfill(status=204, headers=cors)
         rel = path.split("/contents/", 1)[1] if "/contents/" in path else ""
+        if req.method == "PUT" and state_offline["on"]:
+            return route.abort("internetdisconnected")
         if req.method == "PUT":
             body = json.loads(req.post_data)
             raw = base64.b64decode(body["content"])
@@ -117,7 +120,7 @@ def main():
         # ---------------- iPhone
         page = b.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
         page.on("pageerror", lambda e: errors.append(str(e)))
-        page.on("console", lambda m: m.type == "error" and "404" not in m.text and errors.append(m.text))
+        page.on("console", lambda m: m.type == "error" and "404" not in m.text and "INTERNET_DISCONNECTED" not in m.text and errors.append(m.text))
         page.route("https://api.github.com/**", gh)
         page.goto(base)
         page.wait_for_selector("#settings[open]")
@@ -190,7 +193,7 @@ def main():
             page.wait_for_selector("#sheet canvas.photo-preview")
             page.fill("#photo-note", "Beinstrecker")
             page.click("#sheet button:has-text('Hochladen')")
-            page.wait_for_selector("#sheet >> text=Foto gespeichert")
+            page.wait_for_selector("#sheet >> text=Foto hochgeladen")
         finally:
             img.unlink()
         jp = [x for x in puts if x["path"].startswith("inbox/app/photos/") and x["path"].endswith(".jpg")]
@@ -208,13 +211,34 @@ def main():
             fc.value.set_files([str(img), str(img2)])
             page.wait_for_selector("#sheet button:has-text('2 Fotos hochladen')")
             page.click("#sheet button:has-text('2 Fotos hochladen')")
-            page.wait_for_selector("#sheet >> text=2 Fotos gespeichert")
+            page.wait_for_selector("#sheet >> text=2 Fotos hochgeladen")
         finally:
             img.unlink(); img2.unlink()
         ex_meta = [x["obj"] for x in puts if x["path"].startswith("inbox/app/photos/") and x["path"].endswith(".json") and x["obj"].get("exercise")]
         assert len(ex_meta) == 2 and ex_meta[0]["exercise"] == "leg_extension", ex_meta
         page.click("#sheet-close")
         page.wait_for_selector("text=Heute 3 Fotos gespeichert")
+
+        # Kein Empfang: Foto bleibt auf dem Gerät, Hinweis auf der Startseite, später hochladen
+        state_offline["on"] = True
+        img.write_bytes(base64.b64decode(PNG))
+        try:
+            with page.expect_file_chooser() as fc:
+                page.click("#view-training button:has-text('Fotos aufnehmen')")
+            fc.value.set_files(str(img))
+            page.click("#sheet button:has-text('Hochladen')")
+            page.wait_for_selector("#sheet >> text=auf dem Gerät gespeichert")
+        finally:
+            img.unlink()
+        page.click("#sheet-close")
+        page.click(".tabbar [data-view=heute]")
+        page.wait_for_selector("#view-heute .card-outbox >> text=1 Foto")
+        n_before = len(puts)
+        state_offline["on"] = False
+        page.click("#view-heute .card-outbox button:has-text('Jetzt hochladen')")
+        page.wait_for_selector("#view-heute .card-outbox", state="detached")
+        assert len(puts) == n_before + 2 and puts[-2]["path"].endswith(".jpg") and puts[-1]["path"].endswith(".json"), puts[-3:]
+        page.click(".tabbar [data-view=training]")
 
         page.click(".tabbar [data-view=weg]")
         page.wait_for_selector("text=Wie nah bist du dran?")

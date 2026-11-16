@@ -298,3 +298,5 @@ button.day-link:focus-visible, .card-link:focus-visible, .list-link:focus-visibl
 .guide-sec p { margin: 0; }
 .guide-steps, .guide-list, .guide-links { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; }
 .guide-links a { color: var(--accent-strong); font-weight: 700; min-height: 32px; display: inline-flex; align-items: center; }
+.card-outbox { border: 1.5px dashed var(--warn); }
+.card-outbox .eyebrow { color: var(--warn); }

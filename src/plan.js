@@ -6,9 +6,17 @@ export const STATES = { below: "darunter", in: "im Ziel", above: "darüber" };
 const ENDURANCE = new Set(["run", "ride", "walk", "hike", "swim", "rowing", "paddle", "ski_nordic",
   "ski_touring", "ski_alpine", "snowboard", "workout", "yoga", "other"]);
 
-/** Kategorien einer Einheit: studio (Technogym-Kraftzirkel), strength, endurance. */
-export function categories(w) {
-  if (w.type === "strength") return w.source === "technogym" ? ["studio", "strength"] : ["strength"];
+/** Kategorien einer Einheit: studio (Technogym-Kraftzirkel), strength, endurance.
+ *  studioDays: Tage mit Gerätewerten (Technogym-Export oder Fotos) – dann zählt auch
+ *  ein mit der Uhr aufgezeichnetes Krafttraining an diesem Tag als Studio. */
+export function categories(w, studioDays = null) {
+  return cats(w, studioDays);
+}
+function cats(w, studioDays) {
+  if (w.type === "strength") {
+    const studio = w.source === "technogym" || (studioDays && studioDays.has((w.start_local || "").slice(0, 10)));
+    return studio ? ["studio", "strength"] : ["strength"];
+  }
   return ENDURANCE.has(w.type) ? ["endurance"] : [];
 }
 
@@ -68,7 +76,8 @@ const ORDER = ["kraft_a", "lang", "kraft_b", "frei"];
  * Ordnet die Einheiten einer Woche den Bausteinen zu.
  * Reihenfolge: Kraft A (Studio zuerst), Lang (längste Ausdauer ≥ min_share), Kraft B, Training nach Wahl.
  */
-export function matchWeek(week, workouts, choices = {}) {
+export function matchWeek(week, workouts, choices = {}, studioDays = null) {
+  const categories = (w) => cats(w, studioDays);
   const pool = (workouts || [])
     .filter((w) => !w.duplicate_of && w.start_local && w.start_local.slice(0, 10) >= week.start && w.start_local.slice(0, 10) <= week.end)
     .sort((a, b) => a.start_utc.localeCompare(b.start_utc));

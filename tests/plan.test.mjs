@@ -126,3 +126,9 @@ test("Schreiben nur nach inbox/app/, Base64 mit Umlauten, 404-Verhalten", async 
   assert.equal(await loadJson(DEFAULTS, "data/feedback.json", "t", null, async () => ({ status: 404, ok: false })), null);
   await assert.rejects(putJson(DEFAULTS, "inbox/app/x.json", {}, "t", "m", async () => ({ ok: false, status: 403 })), /403/);
 });
+
+test("Uhr-Krafttraining zählt als Studio, wenn es Gerätewerte vom Tag gibt", () => {
+  const w = { id: "s:1", type: "strength", source: "strava", start_local: "2030-01-07T12:00:00" };
+  assert.deepEqual(categories(w), ["strength"]);
+  assert.deepEqual(categories(w, new Set(["2030-01-07"])), ["studio", "strength"]);
+});
