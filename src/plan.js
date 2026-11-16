@@ -20,6 +20,30 @@ function cats(w, studioDays) {
   return ENDURANCE.has(w.type) ? ["endurance"] : [];
 }
 
+/** Rad-Aufwärmen zu einer Studio-Einheit: gleicher Tag, endet bis 30 min vor dem Zirkel
+ *  oder startet innerhalb der Uhr-Aufzeichnung (max. 30 min). */
+export function warmupsFor(w, workouts, studioDays = null) {
+  if (!cats(w, studioDays).includes("studio")) return [];
+  const t0 = Date.parse(w.start_utc);
+  const day = w.start_local.slice(0, 10);
+  return (workouts || []).filter((o) => {
+    if (o.id === w.id || o.duplicate_of || !o.start_local || o.start_local.slice(0, 10) !== day) return false;
+    if (!["ride"].includes(o.type)) return false;
+    const start = Date.parse(o.start_utc);
+    const end = start + minutesOf(o) * 60000;
+    const before = end <= t0 + 5 * 60000 && end >= t0 - 30 * 60000;
+    const inside = start >= t0 - 5 * 60000 && start <= t0 + minutesOf(w) * 60000 && minutesOf(o) <= 30;
+    return before || inside;
+  });
+}
+
+/** Ids aller Rad-Aufwärmeinheiten (werden nicht einzeln aufgeführt). */
+export function warmupIds(workouts, studioDays = null) {
+  const ids = new Set();
+  for (const w of workouts || []) if (w.type === "strength" && !w.duplicate_of) for (const o of warmupsFor(w, workouts, studioDays)) ids.add(o.id);
+  return ids;
+}
+
 export function minutesOf(w) {
   const s = w.type === "strength" ? (w.duration_s || w.moving_s) : (w.moving_s || w.duration_s);
   return s ? Math.round(s / 60) : 0;
@@ -106,20 +130,9 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null) {
     const parts = [];
     if (w) {
       used.add(w.id);
-      // Studio: Aufwärmen am Rad (bis 30 min vor dem Zirkel, gleicher Tag) gehört dazu
-      if (categories(w).includes("studio")) {
-        const t0 = Date.parse(w.start_utc);
-        for (const o of pool) {
-          if (used.has(o.id) || !categories(o).includes("endurance")) continue;
-          const end = Date.parse(o.start_utc) + minutesOf(o) * 60000;
-          const start = Date.parse(o.start_utc);
-          const before = end <= t0 + 5 * 60000 && end >= t0 - 30 * 60000;
-          // Uhr läuft schon beim Aufwärmen: kurze Radeinheit innerhalb des Krafttrainings
-          const inside = start >= t0 - 5 * 60000 && start <= t0 + minutesOf(w) * 60000 && minutesOf(o) <= 30;
-          if (o.start_local.slice(0, 10) === w.start_local.slice(0, 10) && (before || inside)) {
-            parts.push(o); used.add(o.id);
-          }
-        }
+      // Studio: Aufwärmen am Rad gehört dazu
+      for (const o of warmupsFor(w, pool, studioDays)) {
+        if (!used.has(o.id)) { parts.push(o); used.add(o.id); }
       }
     }
     result[b.id] = { block: b, workout: w, parts, status: w ? "done" : "open" };
@@ -207,14 +220,14 @@ export function advice(block, rows, feedback) {
 }
 
 /** Einheiten der letzten Tage ohne Rückmeldung (ab Planbeginn). */
-export function pendingFeedback(workouts, feedbackById, plan, today, days = 10) {
+export function pendingFeedback(workouts, feedbackById, plan, today, days = 10, skip = new Set()) {
   const start = plan?.weeks?.[0]?.start || "0000";
   const from = new Date(today + "T00:00:00");
   from.setDate(from.getDate() - days);
   const fromIso = isoDate(from);
   return (workouts || [])
     .filter((w) => !w.duplicate_of && w.start_local.slice(0, 10) >= start && w.start_local.slice(0, 10) >= fromIso
-      && w.start_local.slice(0, 10) <= today && !feedbackById[w.id])
+      && w.start_local.slice(0, 10) <= today && !feedbackById[w.id] && !skip.has(w.id))
     .sort((a, b) => b.start_utc.localeCompare(a.start_utc));
 }
 

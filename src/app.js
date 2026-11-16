@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.16-2";
-import { APP_VERSION } from "./version.js?v=2026.11.16-2";
-import { figure } from "./figures.js?v=2026.11.16-2";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.16-2";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.16-2";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.16-3";
+import { APP_VERSION } from "./version.js?v=2026.11.16-3";
+import { figure } from "./figures.js?v=2026.11.16-3";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.16-3";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.16-3";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
-  spontaneousFor, inboxName, isoDate, minutesOf,
-} from "./plan.js?v=2026.11.16-2";
+  spontaneousFor, inboxName, isoDate, minutesOf, warmupsFor, warmupIds,
+} from "./plan.js?v=2026.11.16-3";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -206,8 +206,11 @@ function currentWeek() {
   if (state.weekIndex == null) state.weekIndex = state.plan.weeks.indexOf(wf.week);
   return wf;
 }
+function studioDays() { return new Set(state.strength.map((e) => e.start_local.slice(0, 10))); }
+function warmups() { return warmupIds(state.workouts, studioDays()); }
+function partsOf(w) { return w.type === "strength" ? warmupsFor(w, state.workouts, studioDays()) : []; }
 function matched(week) {
-  return matchWeek(week, state.workouts, latestChoices(state.choices), new Set(state.strength.map((e) => e.start_local.slice(0, 10))));
+  return matchWeek(week, state.workouts, latestChoices(state.choices), studioDays());
 }
 function fb() { return latestFeedback(state.feedback); }
 function labels() { return state.plan?.effort_labels || ["locker", "machbar", "fordernd", "musste beißen", "zu viel"]; }
@@ -298,10 +301,10 @@ function renderHeute() {
   if (ob) colA.append(ob);
 
   // Rückmeldungen
-  for (const w of pendingFeedback(state.workouts, fbm, state.plan, t).slice(0, 3)) {
+  for (const w of pendingFeedback(state.workouts, fbm, state.plan, t, 10, warmups()).slice(0, 3)) {
     colA.append(el("section", { class: "card card-accent" },
       el("span", { class: "eyebrow", text: "Neue Einheit" }),
-      el("button", { type: "button", class: "card-link", onclick: () => openWorkout(w) }, el("strong", { text: workoutLine(w) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" })),
+      el("button", { type: "button", class: "card-link", onclick: () => openWorkout(w) }, el("strong", { text: workoutLine(w, partsOf(w)) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" })),
       btn("Wie war's?", () => openFeedback(w), "btn primary")));
   }
 
@@ -480,11 +483,12 @@ function renderFortschritt() {
     chart.append(el("div", { class: "bar-col" }, el("span", { class: "bar-val", text: b.h ? b.h.toFixed(1).replace(".", ",") : "" }),
       el("div", { class: "chart-bar", style: `height: ${Math.round((b.h / max) * 120)}px` }), el("span", { class: "bar-lbl", text: b.label })));
   }
-  const recent = [...ws].sort((a, b) => b.start_utc.localeCompare(a.start_utc)).slice(0, 15);
+  const skip = warmups();
+  const recent = [...ws].filter((w) => !skip.has(w.id)).sort((a, b) => b.start_utc.localeCompare(a.start_utc)).slice(0, 15);
   root.append(el("div", { class: "cols" },
     el("div", { class: "col" }, el("section", { class: "card" }, el("div", { class: "row between" }, el("strong", { text: "Training pro Woche" }), el("span", { class: "muted small", text: "Stunden" })), chart)),
     el("div", { class: "col" }, el("section", { class: "card" }, el("strong", { text: "Letzte Einheiten" }),
-      el("ul", { class: "plain-list" }, ...recent.map((w) => el("li", {}, el("button", { type: "button", class: "list-link", onclick: () => openWorkout(w) }, el("span", { text: workoutLine(w) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" })))))))));
+      el("ul", { class: "plain-list" }, ...recent.map((w) => el("li", {}, el("button", { type: "button", class: "list-link", onclick: () => openWorkout(w) }, el("span", { text: workoutLine(w, partsOf(w)) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" })))))))));
 }
 
 // ---------------------------------------------------------------- Training heute + Details
@@ -648,7 +652,7 @@ function openWorkout(w) {
   if (w.hr_avg) tile("Puls Ø", `${Math.round(w.hr_avg)}`);
   if (w.hr_max) tile("Puls max", `${Math.round(w.hr_max)}`);
   if (w.elevation_gain_m) tile("Höhenmeter", `${Math.round(w.elevation_gain_m)} m`);
-  const body = el("div", { class: "sheet-content" }, el("p", { class: "muted", text: workoutLine(w) }), tiles);
+  const body = el("div", { class: "sheet-content" }, el("p", { class: "muted", text: workoutLine(w, partsOf(w)) }), tiles);
   // Zu welchem Baustein zählt die Einheit?
   if (state.plan) {
     const wk = state.plan.weeks.find((x) => w.start_local.slice(0, 10) >= x.start && w.start_local.slice(0, 10) <= x.end);

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   categories, matchWeek, evaluate, effortState, rangeState, weekFor, latestChoices, latestFeedback,
-  pendingFeedback, daysUntil, spontaneousFor, inboxName, effectiveBlock, totalMinutes, STATES,
+  pendingFeedback, warmupIds, daysUntil, spontaneousFor, inboxName, effectiveBlock, totalMinutes, STATES,
 } from "../src/plan.js";
 import { putJson, toBase64Utf8, listDir, loadJson, DEFAULTS } from "../src/data.js";
 
@@ -144,4 +144,15 @@ test("Rad-Aufwärmen zählt zum Studio, auch wenn die Uhr schon vorher läuft", 
   assert.equal(m.blocks[0].status, "done");
   assert.deepEqual(m.blocks[0].parts.map((p) => p.id), ["r"]);
   assert.equal(m.blocks[1].status, "open");
+});
+
+test("Rad-Aufwärmen wird nicht einzeln geführt und braucht keine eigene Rückmeldung", () => {
+  const ws = [
+    { id: "s", type: "strength", source: "strava", start_local: "2030-01-07T11:00:00", start_utc: "2030-01-07T10:00:00Z", duration_s: 3300 },
+    { id: "r", type: "ride", source: "strava", start_local: "2030-01-07T11:01:00", start_utc: "2030-01-07T10:01:00Z", duration_s: 840 },
+    { id: "r2", type: "ride", source: "strava", start_local: "2030-01-07T18:00:00", start_utc: "2030-01-07T17:00:00Z", duration_s: 3600 }];
+  const ids = warmupIds(ws, new Set(["2030-01-07"]));
+  assert.deepEqual([...ids], ["r"]);
+  const plan = { weeks: [{ start: "2030-01-07" }] };
+  assert.deepEqual(pendingFeedback(ws, {}, plan, "2030-01-08", 10, ids).map((w) => w.id), ["r2", "s"]);
 });
