@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.19-1";
-import { APP_VERSION } from "./version.js?v=2026.11.19-1";
-import { figure } from "./figures.js?v=2026.11.19-1";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.19-1";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.19-1";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.19-2";
+import { APP_VERSION } from "./version.js?v=2026.11.19-2";
+import { figure } from "./figures.js?v=2026.11.19-2";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.19-2";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.19-2";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf, warmupsFor, warmupIds,
-} from "./plan.js?v=2026.11.19-1";
+} from "./plan.js?v=2026.11.19-2";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -211,9 +211,21 @@ function studioDays() { return new Set(state.strength.map((e) => e.start_local.s
 function warmups() { return warmupIds(state.workouts, studioDays()); }
 function partsOf(w) { return w.type === "strength" ? warmupsFor(w, state.workouts, studioDays()) : []; }
 function matched(week) {
-  return matchWeek(week, state.workouts, latestChoices(state.choices), studioDays());
+  const m = matchWeek(week, state.workouts, latestChoices(state.choices), studioDays());
+  const bf = blockFb();
+  // Selbst als fertig gemeldet, Einheit aus Strava/Technogym fehlt noch → „gemeldet“
+  for (const mb of m.blocks) if (mb.status === "open" && bf[mb.block.id]) mb.status = "reported";
+  return m;
 }
-function fb() { return latestFeedback(state.feedback); }
+function fb() { return latestFeedback(state.feedback.filter((f) => f.workout_id)); }
+/** Rückmeldungen über „Fertig“ (ohne Einheit) je Baustein, neueste gilt. */
+function blockFb() {
+  const by = {};
+  for (const f of state.feedback) if (f.block_id && !f.workout_id && (!by[f.block_id] || by[f.block_id].created_at <= f.created_at)) by[f.block_id] = f;
+  return by;
+}
+function feedbackFor(mb) { return (mb.workout && fb()[mb.workout.id]) || blockFb()[mb.block.id] || null; }
+const isDone = (mb) => mb.status === "done" || mb.status === "reported";
 function labels() { return state.plan?.effort_labels || ["locker", "machbar", "fordernd", "musste beißen", "zu viel"]; }
 
 function workoutLine(w, parts = []) {
@@ -267,7 +279,7 @@ function dayStrip(week, m) {
       : el("div", { class: cls, role: "listitem" });
     cell.append(el("span", { class: "day-name", text: lbl.slice(0, 2) }), el("span", { class: "day-num", text: lbl.slice(3, 5) }));
     if (mb) {
-      cell.append(el("span", { class: `day-block tag-${mb.status}`, text: SHORT[mb.block.kind] + (mb.status === "done" ? " ✓" : "") }));
+      cell.append(el("span", { class: `day-block tag-${mb.status}`, text: SHORT[mb.block.kind] + (isDone(mb) ? " ✓" : "") }));
     } else if (doneHere) {
       cell.append(el("span", { class: "day-block tag-done", text: SHORT[doneHere.block.kind] + " ✓" }));
     } else if (unavailable[iso]) {
@@ -302,11 +314,15 @@ function renderHeute() {
   if (ob) colA.append(ob);
 
   // Rückmeldungen
-  for (const w of pendingFeedback(state.workouts, fbm, state.plan, t, 10, warmups()).slice(0, 3)) {
+  const covered = warmups();
+  for (const wk of state.plan.weeks.filter((x) => x.start <= t)) {
+    for (const mb of matched(wk).blocks) if (mb.workout && blockFb()[mb.block.id]) covered.add(mb.workout.id);
+  }
+  for (const w of pendingFeedback(state.workouts, fbm, state.plan, t, 10, covered).slice(0, 3)) {
     colA.append(el("section", { class: "card card-accent" },
       el("span", { class: "eyebrow", text: "Neue Einheit" }),
       el("button", { type: "button", class: "card-link", onclick: () => openWorkout(w) }, el("strong", { text: workoutLine(w, partsOf(w)) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" })),
-      btn("Wie war's?", () => openFeedback(w), "btn primary")));
+      btn("Wie war's?", () => openFeedback({ workout: w }), "btn primary")));
   }
 
   // Nächster Baustein
@@ -348,7 +364,7 @@ function renderHeute() {
 
   // Woche
   const active = m.blocks.filter((b) => b.status !== "skipped");
-  const done = active.filter((b) => b.status === "done").length;
+  const done = active.filter(isDone).length;
   const pct = active.length ? Math.round((done / active.length) * 100) : 0;
   const wk = el("section", { class: "card" },
     el("div", { class: "row between" }, el("strong", { text: `Woche ${wf.week.week} · ${wf.week.focus}` }), el("span", { class: "accent-text", text: `${done} / ${active.length}` })),
@@ -357,7 +373,7 @@ function renderHeute() {
   for (const b of byDay(m.blocks)) {
     list.append(el("li", {}, el("button", { type: "button", class: "list-link", onclick: () => openDetail(b, wf.week) },
       el("span", { text: `${b.block.day ? fmtDay(b.block.day).slice(0, 2) + " · " : ""}${b.block.title}` }),
-      el("span", { class: `tag tag-${b.status}`, text: b.status === "done" ? "erledigt" : b.status === "skipped" ? "weggelassen" : "offen" }))));
+      el("span", { class: `tag tag-${b.status}`, text: statusText(b) }))));
   }
   wk.append(dayStrip(wf.week, m), list, btn("Zum Wochenplan", () => show("plan"), "btn link-btn"));
   colB.append(wk);
@@ -398,14 +414,16 @@ function renderPlan() {
     const card = el("section", { class: `card block block-${mb.status}` });
     card.append(el("button", { type: "button", class: "card-link row between", onclick: () => openDetail(mb, week) },
       el("strong", { text: b.title }),
-      el("span", { class: "row" }, el("span", { class: `tag tag-${mb.status}`, text: mb.status === "done" ? `erledigt ${fmtDay(mb.workout.start_local).slice(0, 2)}` : mb.status === "skipped" ? "weggelassen" : `${b.minutes} min` }),
+      el("span", { class: "row" }, el("span", { class: `tag tag-${mb.status}`, text: mb.status === "done" ? `erledigt ${fmtDay(mb.workout.start_local).slice(0, 2)}` : mb.status === "reported" ? "fertig gemeldet" : mb.status === "skipped" ? "weggelassen" : `${b.minutes} min` }),
         el("span", { class: "chev", "aria-hidden": "true", text: "›" }))));
     if (b.substitute && !b.skipped) card.append(el("span", { class: "muted", text: `Ersatz: ${b.substitute.title}` }));
     if (mb.status === "done") {
       card.append(el("span", { class: "muted", text: workoutLine(mb.workout, mb.parts) }));
-      const ev = evaluate(mb, fbm[mb.workout.id], state.strength, labels());
+      const ev = evaluate(mb, feedbackFor(mb), state.strength, labels());
       card.append(corridorRows(ev), el("p", { class: "advice", text: ev.advice }));
-      if (!fbm[mb.workout.id]) card.append(btn("Rückmeldung geben", () => openFeedback(mb.workout), "btn primary"));
+      if (!feedbackFor(mb)) card.append(btn("Rückmeldung geben", () => openFeedback({ workout: mb.workout, block: mb.block }), "btn primary"));
+    } else if (mb.status === "reported") {
+      card.append(feedbackSummary(feedbackFor(mb)), el("span", { class: "muted small", text: "Wartet auf die Aufzeichnung aus Strava bzw. Technogym." }));
     } else if (mb.status === "open") {
       card.append(el("span", { class: "plan-day", text: when(b) }), el("span", { text: b.details }),
         el("div", { class: "row" }, btn("Übungen", () => openDetail(mb, week)), btn("Ersatz", () => openErsatz(b, week))));
@@ -592,7 +610,7 @@ function strengthOn(w, targets = []) {
 }
 
 function statusText(mb) {
-  return mb.status === "done" ? "erledigt" : mb.status === "skipped" ? "weggelassen" : "offen";
+  return mb.status === "done" ? "erledigt" : mb.status === "reported" ? "fertig gemeldet" : mb.status === "skipped" ? "weggelassen" : "offen";
 }
 
 /** Inhalt der Detailansicht eines Bausteins (im Sheet oder im Reiter Training). */
@@ -622,12 +640,12 @@ function blockDetail(mb, week, inline = false) {
   if (b.skipped) wrap.append(el("p", { class: "note", text: `Diese Woche weggelassen – ${b.substitute?.effect || ""}` }));
   const opt = sub ? null : pickedOption(mb);
   if (opt && !b.skipped) {
-    wrap.append(el("h3", { class: "detail-h", text: mb.status === "done" ? "Gemacht" : "Was machst du?" }));
+    wrap.append(el("h3", { class: "detail-h", text: isDone(mb) ? "Gemacht" : "Was machst du?" }));
     const g = el("div", { class: "choices", role: "radiogroup", "aria-label": "Sportart wählen" });
     for (const o of b.options) {
       const on = o.id === opt.id;
       g.append(el("button", { type: "button", role: "radio", class: "btn choice" + (on ? " active" : ""), "aria-checked": on ? "true" : "false",
-        disabled: mb.status === "done" && !on,
+        disabled: isDone(mb) && !on,
         onclick: () => { setPick(b.id, o.id); if (inline) renderTraining(); else openDetail(mb, week); } }, o.title));
     }
     wrap.append(g);
@@ -645,16 +663,21 @@ function blockDetail(mb, week, inline = false) {
   if (b.notes && !sub && !b.skipped) wrap.append(el("p", { class: "muted small", text: b.notes }));
   const actions = el("div", { class: "row wrap" });
   if (mb.status === "done") {
-    const fbm = fb();
-    const ev = evaluate(mb, fbm[mb.workout.id], state.strength, labels());
+    const ev = evaluate(mb, feedbackFor(mb), state.strength, labels());
     wrap.append(el("h3", { class: "detail-h", text: "So lief es" }),
       el("button", { type: "button", class: "list-link", onclick: () => openWorkout(mb.workout) }, el("span", { text: workoutLine(mb.workout, mb.parts) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" })),
       corridorRows(ev), el("p", { class: "advice", text: ev.advice }));
     const done = strengthOn(mb.workout, b.exercises || []);
     if (done) wrap.append(el("span", { class: "small", text: "Am Gerät (↑ über, ✓ im, ↓ unter Zielgewicht):" }), done);
-    if (!fbm[mb.workout.id]) actions.append(btn("Rückmeldung geben", () => openFeedback(mb.workout), "btn primary"));
+    const f = feedbackFor(mb);
+    if (f) wrap.append(feedbackSummary(f));
+    else actions.append(btn("Rückmeldung geben", () => openFeedback({ workout: mb.workout, block: b }), "btn primary"));
+  } else if (mb.status === "reported") {
+    wrap.append(el("h3", { class: "detail-h", text: "Deine Rückmeldung" }), feedbackSummary(feedbackFor(mb)),
+      el("span", { class: "muted small", text: "Die Aufzeichnung aus Strava bzw. Technogym kommt beim nächsten Abgleich dazu." }));
+    actions.append(btn("Rückmeldung ändern", () => openFeedback({ block: b, option: opt?.id, prev: feedbackFor(mb) })));
   } else if (mb.status === "open") {
-    actions.append(btn("Ersatz", () => openErsatz(b, week)));
+    actions.append(btn("Fertig", () => openFeedback({ block: b, option: opt?.id }), "btn primary"), btn("Ersatz", () => openErsatz(b, week)));
   } else {
     actions.append(btn("Doch machen", () => chooseSubstitute(b, { id: "plan", title: "Wie geplant" })));
   }
@@ -690,10 +713,15 @@ function openWorkout(w) {
   }
   const s = strengthOn(w);
   if (s && (w.type === "strength" || (w.source === "technogym"))) body.append(el("strong", { text: "Übungen am Gerät" }), s);
-  const f = fb()[w.id];
-  if (f) body.append(el("p", { class: "small", text: `Gefühl: ${labels()[f.effort - 1]}${f.knee != null ? ` · Knie: ${(state.plan?.knee_labels || [])[f.knee] || f.knee}` : ""}${f.note ? ` · ${f.note}` : ""}` }));
+  let f = fb()[w.id];
+  if (!f && state.plan) {
+    const wk = state.plan.weeks.find((x) => w.start_local.slice(0, 10) >= x.start && w.start_local.slice(0, 10) <= x.end);
+    const mb = wk && matched(wk).blocks.find((x) => x.workout?.id === w.id);
+    if (mb) f = feedbackFor(mb);
+  }
+  if (f) body.append(feedbackSummary(f));
   body.append(el("div", { class: "row wrap" },
-    f ? null : btn("Rückmeldung geben", () => openFeedback(w), "btn primary"),
+    f ? null : btn("Rückmeldung geben", () => openFeedback({ workout: w }), "btn primary"),
     btn("Fotos zur Einheit", () => pickPhoto({ workout_id: w.id, label: workoutLine(w) }))));
   openSheet(TYPE_LABELS[w.type] || w.type, body);
 }
@@ -723,7 +751,7 @@ function renderTraining() {
   for (const mb of list) {
     const b = mb.block;
     colA.append(el("section", { class: "card card-next" },
-      el("span", { class: "eyebrow", text: mb.status === "done" ? "Heute erledigt" : kind === "heute" ? "Heute" : "Nächste Einheit" }),
+      el("span", { class: "eyebrow", text: isDone(mb) ? "Heute erledigt" : kind === "heute" ? "Heute" : "Nächste Einheit" }),
       el("strong", { class: "big", text: b.substitute && !b.skipped ? `${b.title} → ${b.substitute.title}` : pickedOption(mb) ? `${b.title} · ${pickedOption(mb).title}` : b.title }),
       blockDetail(mb, week, kind === "heute")));
   }
@@ -855,38 +883,75 @@ function choiceGroup(name, options, selected, onPick) {
   return g;
 }
 
-function openFeedback(w) {
-  let effort = null, knee = null;
+const FEEDBACK_TAGS = [
+  "Lief richtig gut", "Leichter als gedacht", "Gewicht erhöht", "Technik besser",
+  "Beine schwer", "Atmung schwer", "Kurz und knackig", "Abgebrochen / gekürzt",
+  "Wenig geschlafen", "Stress / müde", "Zeitdruck", "Knie hat gezwickt", "Wetter schlecht",
+];
+
+function feedbackSummary(f) {
+  if (!f) return null;
+  const knees = state.plan?.knee_labels || [];
+  const bits = [`Gefühl: ${labels()[f.effort - 1]}`];
+  if (f.knee != null) bits.push(`Knie: ${knees[f.knee] ?? f.knee}`);
+  return el("div", { class: "fb-summary" },
+    el("span", { class: "small", text: bits.join(" · ") }),
+    f.tags?.length ? el("div", { class: "row wrap" }, ...f.tags.map((t) => chip(t))) : null,
+    f.note ? el("p", { class: "small", text: f.note }) : null);
+}
+
+/** Rückmeldung zu einer aufgezeichneten Einheit ({ workout }) oder „Fertig“ zu einem Baustein ({ block, option }). */
+function openFeedback({ workout = null, block = null, option = null, prev = null } = {}) {
+  let effort = prev?.effort ?? null, knee = prev?.knee ?? null;
+  const tags = new Set(prev?.tags || []);
   const knees = state.plan?.knee_labels || ["ruhig", "leicht", "deutlich", "stark"];
-  const note = el("input", { type: "text", id: "fb-note", placeholder: "z. B. Gegenwind, schlecht geschlafen", maxlength: "200" });
-  const saveBtn = btn("Speichern", null, "btn primary full");
+  const note = el("textarea", { id: "fb-note", rows: "3", maxlength: "500", placeholder: "Was du festhalten willst – z. B. Gegenwind, 3. Satz nur 12 Wdh." });
+  note.value = prev?.note || "";
+  const saveBtn = btn(workout ? "Speichern" : "Fertig – speichern", null, "btn primary full");
   const body = el("div", { class: "sheet-content" });
+  const tagBox = el("div", { class: "tag-choices", role: "group", "aria-label": "Stichworte" });
+  for (const t of FEEDBACK_TAGS) {
+    const b = el("button", { type: "button", class: "chip chip-toggle" + (tags.has(t) ? " active" : ""), "aria-pressed": tags.has(t) ? "true" : "false" }, t);
+    b.addEventListener("click", () => {
+      if (tags.has(t)) tags.delete(t); else tags.add(t);
+      b.classList.toggle("active", tags.has(t));
+      b.setAttribute("aria-pressed", tags.has(t) ? "true" : "false");
+    });
+    tagBox.append(b);
+  }
+  const head = workout ? workoutLine(workout, partsOf(workout)) : `${block.title}${option ? " · " + (block.options?.find((o) => o.id === option)?.title || option) : ""} · ${fmtDay(today())}`;
   const draw = () => {
     body.replaceChildren(
-      el("p", { class: "muted", text: workoutLine(w) }),
+      el("p", { class: "muted", text: head }),
       el("strong", { text: "Wie war's?" }),
       choiceGroup("Gefühlte Belastung", labels(), effort == null ? null : effort - 1, (i) => { effort = i + 1; draw(); }),
       el("strong", { text: "Knie links" }),
       choiceGroup("Knie links", knees, knee, (i) => { knee = i; draw(); }),
-      el("label", { class: "field" }, "Notiz (optional)", note),
+      el("strong", { text: "Stichworte (optional)" }), tagBox,
+      el("label", { class: "field" }, "Kommentar (optional)", note),
       saveBtn,
-      el("span", { class: "muted small", text: "Wird nur in dein privates Daten-Repo geschrieben." }));
+      el("span", { class: "muted small", text: workout ? "Wird nur in dein privates Daten-Repo geschrieben."
+        : "Markiert die Einheit als fertig. Die Aufzeichnung aus Strava bzw. Technogym wird später automatisch zugeordnet." }));
     saveBtn.disabled = effort == null;
   };
   saveBtn.addEventListener("click", async () => {
     if (effort == null) return;
-    const item = { workout_id: w.id, effort, knee, note: note.value.trim() || null, created_at: new Date().toISOString(), source: "app" };
+    const item = { effort, knee, tags: [...tags], note: note.value.trim() || null, created_at: new Date().toISOString(), source: "app" };
+    if (workout) item.workout_id = workout.id;
+    if (block) { item.block_id = block.id; item.day = today(); if (option) item.option = option; }
     saveBtn.disabled = true;
     sheetStatus("Speichere …");
     try {
-      await save(inboxName("inbox/app/feedback", w.id), item, `App: Rückmeldung ${w.start_local.slice(0, 10)} ${TYPE_LABELS[w.type] || w.type}`);
+      const id = workout ? workout.id : block.id;
+      const msg = workout ? `App: Rückmeldung ${workout.start_local.slice(0, 10)} ${TYPE_LABELS[workout.type] || workout.type}` : `App: Fertig ${block.id}`;
+      await save(inboxName("inbox/app/feedback", id), item, msg);
       state.feedback.push(item);
       $("#sheet").close();
       render();
     } catch (e) { sheetStatus(e.message, "error"); saveBtn.disabled = false; }
   });
   draw();
-  openSheet("Rückmeldung", body);
+  openSheet(workout ? "Rückmeldung" : "Einheit abschließen", body);
 }
 
 function openErsatz(block, week) {

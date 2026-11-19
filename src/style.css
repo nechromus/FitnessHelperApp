@@ -300,3 +300,9 @@ button.day-link:focus-visible, .card-link:focus-visible, .list-link:focus-visibl
 .guide-links a { color: var(--accent-strong); font-weight: 700; min-height: 32px; display: inline-flex; align-items: center; }
 .card-outbox { border: 1.5px dashed var(--warn); }
 .card-outbox .eyebrow { color: var(--warn); }
+.tag-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-toggle { min-height: 44px; padding: 8px 12px; background: var(--card); color: var(--text); cursor: pointer; font: inherit; font-size: .9rem; }
+.chip-toggle.active { background: var(--primary-bg); color: var(--primary-text); border-color: transparent; font-weight: 700; }
+#fb-note { font: inherit; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; resize: vertical; }
+.fb-summary { display: flex; flex-direction: column; gap: 6px; }
+.tag-reported, .day-block.tag-reported { color: var(--ok); }

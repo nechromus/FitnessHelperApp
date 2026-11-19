@@ -231,6 +231,21 @@ def main():
         page.click("#sheet-close")
         page.wait_for_selector("text=Heute 3 Fotos gespeichert")
 
+        # „Fertig“ mit Stichworten und Kommentar für einen offenen Baustein
+        page.click(".tabbar [data-view=plan]")
+        page.wait_for_selector("#view-plan .block-open")
+        page.locator("#view-plan .block-open .card-link").first.click()
+        page.click("#sheet .detail button:has-text('Fertig')")
+        page.click("#sheet [role=radio]:has-text('machbar')")
+        page.click("#sheet .chip-toggle:has-text('Beine schwer')")
+        page.fill("#fb-note", "Testkommentar")
+        page.click("#sheet button:has-text('Fertig – speichern')")
+        page.wait_for_selector("#sheet", state="hidden")
+        fin = [x["obj"] for x in puts if x["path"].startswith("inbox/app/feedback/") and x["obj"].get("block_id")]
+        assert fin and fin[-1]["tags"] == ["Beine schwer"] and fin[-1]["note"] == "Testkommentar" and fin[-1]["effort"] == 2 and "workout_id" not in fin[-1], fin
+        page.wait_for_selector("#view-plan .block-reported >> text=fertig gemeldet")
+        page.click(".tabbar [data-view=training]")
+
         # Kein Empfang: Foto bleibt auf dem Gerät, Hinweis auf der Startseite, später hochladen
         state_offline["on"] = True
         img.write_bytes(base64.b64decode(PNG))
