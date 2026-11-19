@@ -40,6 +40,8 @@ def block(n, kind, title, minutes, accepts, extra=None, start=None):
                          {"id": "weglassen", "title": "Weglassen", "minutes": 0, "accepts": [], "effect": "weg"}]}
     if extra:
         b.update(extra)
+    for o in b.get("options", []):  # Optionen: gleiche Testübungen, erste Übung umbenannt
+        o["exercises"] = [dict(b["exercises"][0], name=o["exercises"][0]["name"])] + [dict(e) for e in b["exercises"][1:]]
     return b
 
 
@@ -50,7 +52,9 @@ def week(n, start):
             "blocks": [block(n, "kraft_a", "Kraft A · Studio", 70, ["studio"], start=start),
                        block(n, "lang", "Lang & ruhig", 60, ["endurance"], {"min_share": .75}, start=start),
                        block(n, "kraft_b", "Kraft B · Heimprogramm", 45, ["strength"], start=start),
-                       block(n, "frei", "Training nach Wahl", 40, ["endurance", "strength"], start=start)]}
+                       block(n, "frei", "Training nach Wahl", 40, ["endurance", "strength"], {"options": [
+                           {"id": "laufen", "title": "Laufen", "exercises": [{"name": "Lauf-Abschnitt", "dose": "10 min"}]},
+                           {"id": "rudern", "title": "Rudergerät", "exercises": [{"name": "Ruder-Abschnitt", "dose": "10 min"}]}]}, start=start)]}
 
 
 PLAN = {
@@ -161,6 +165,14 @@ def main():
         page.click("#sheet .option.recommended")
         page.wait_for_selector("#sheet", state="hidden")
         assert any(x["path"].startswith("inbox/app/choices/") and x["obj"]["substitute_id"] == "ersatz-a" for x in puts), puts
+        # Training nach Wahl: Sportart wählen
+        page.locator("#view-plan .block .card-link", has_text="Training nach Wahl").first.click()
+        page.wait_for_selector("#sheet [role=radiogroup][aria-label='Sportart wählen']")
+        if page.locator("#sheet [role=radio]:has-text('Rudergerät'):not([disabled])").count():
+            page.click("#sheet [role=radio]:has-text('Rudergerät')")
+            page.wait_for_selector("#sheet .ex-name:has-text('Ruder-Abschnitt')")
+        page.click("#sheet-close")
+
         # Details per Antippen
         page.locator("#view-plan .block .card-link", has_text="Kraft B").first.click()
         page.wait_for_selector("#sheet .ex-list")

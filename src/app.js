@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.16-4";
-import { APP_VERSION } from "./version.js?v=2026.11.16-4";
-import { figure } from "./figures.js?v=2026.11.16-4";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.16-4";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.16-4";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.19-1";
+import { APP_VERSION } from "./version.js?v=2026.11.19-1";
+import { figure } from "./figures.js?v=2026.11.19-1";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.19-1";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.19-1";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf, warmupsFor, warmupIds,
-} from "./plan.js?v=2026.11.16-4";
+} from "./plan.js?v=2026.11.19-1";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -15,6 +15,7 @@ const KEY_TOKEN = "fh.token";
 const KEY_VIEW = "fh.view";
 const KEY_THEME = "fh.theme";
 const KEY_TICKS = "fh.ticks";
+const KEY_PICK = "fh.pick";
 
 // ---------------------------------------------------------------- Speicher (kann fehlen oder werfen)
 const store = {
@@ -595,6 +596,21 @@ function statusText(mb) {
 }
 
 /** Inhalt der Detailansicht eines Bausteins (im Sheet oder im Reiter Training). */
+// „Training nach Wahl“: gewählte Sportart (nur auf diesem Gerät); erledigt → aus der Einheit abgeleitet
+const OPTION_BY_TYPE = { run: "laufen", rowing: "rudern", ride: "rad", strength: "kraft" };
+function getPicks() { try { return JSON.parse(store.get(KEY_PICK) || "{}"); } catch { return {}; } }
+function pickedOption(mb) {
+  const opts = mb.block.options;
+  if (!opts?.length) return null;
+  const want = (mb.workout && OPTION_BY_TYPE[mb.workout.type]) || getPicks()[mb.block.id];
+  return opts.find((o) => o.id === want) || opts[0];
+}
+function setPick(blockId, optionId) {
+  const p = getPicks();
+  p[blockId] = optionId;
+  store.set(KEY_PICK, JSON.stringify(p));
+}
+
 function blockDetail(mb, week, inline = false) {
   const b = mb.block;
   const sub = b.substitute && !b.skipped ? b.substitute : null;
@@ -604,13 +620,25 @@ function blockDetail(mb, week, inline = false) {
   if (b.where) wrap.append(el("span", { class: "muted", text: b.where }));
   if (sub) wrap.append(el("p", { class: "note", text: `Ersatz gewählt: ${sub.title} – ${sub.effect}` }));
   if (b.skipped) wrap.append(el("p", { class: "note", text: `Diese Woche weggelassen – ${b.substitute?.effect || ""}` }));
-  const ex = sub ? sub.exercises : b.exercises;
+  const opt = sub ? null : pickedOption(mb);
+  if (opt && !b.skipped) {
+    wrap.append(el("h3", { class: "detail-h", text: mb.status === "done" ? "Gemacht" : "Was machst du?" }));
+    const g = el("div", { class: "choices", role: "radiogroup", "aria-label": "Sportart wählen" });
+    for (const o of b.options) {
+      const on = o.id === opt.id;
+      g.append(el("button", { type: "button", role: "radio", class: "btn choice" + (on ? " active" : ""), "aria-checked": on ? "true" : "false",
+        disabled: mb.status === "done" && !on,
+        onclick: () => { setPick(b.id, o.id); if (inline) renderTraining(); else openDetail(mb, week); } }, o.title));
+    }
+    wrap.append(g);
+  }
+  const ex = sub ? sub.exercises : opt ? opt.exercises : b.exercises;
   if (ex?.length && !b.skipped) {
-    const strength = b.kind.startsWith("kraft") || !!sub?.exercises;
+    const strength = b.kind.startsWith("kraft") || !!sub?.exercises || opt?.id === "kraft";
     wrap.append(el("h3", { class: "detail-h", text: strength ? "Übungen" : "Ablauf" }));
     if (inline && mb.status !== "skipped") wrap.append(el("span", { class: "muted small", text: "Antippen zum Abhaken." }));
-    wrap.append(exerciseList(ex, inline && mb.status !== "skipped" ? `${today()}|${b.id}` : null,
-      mb.status !== "skipped" ? { block_id: b.id, workout_id: mb.workout?.id, label: b.title } : null));
+    wrap.append(exerciseList(ex, inline && mb.status !== "skipped" ? `${today()}|${b.id}${opt ? "|" + opt.id : ""}` : null,
+      mb.status !== "skipped" ? { block_id: b.id, workout_id: mb.workout?.id, label: opt ? `${b.title} · ${opt.title}` : b.title } : null));
   } else if (!b.skipped) {
     wrap.append(el("p", { text: sub ? sub.effect : b.details }));
   }
@@ -696,7 +724,7 @@ function renderTraining() {
     const b = mb.block;
     colA.append(el("section", { class: "card card-next" },
       el("span", { class: "eyebrow", text: mb.status === "done" ? "Heute erledigt" : kind === "heute" ? "Heute" : "Nächste Einheit" }),
-      el("strong", { class: "big", text: b.substitute && !b.skipped ? `${b.title} → ${b.substitute.title}` : b.title }),
+      el("strong", { class: "big", text: b.substitute && !b.skipped ? `${b.title} → ${b.substitute.title}` : pickedOption(mb) ? `${b.title} · ${pickedOption(mb).title}` : b.title }),
       blockDetail(mb, week, kind === "heute")));
   }
   const ob = outboxCard();
