@@ -1,4 +1,4 @@
 {
- "version": "2026.11.19-2",
- "notes": "Knopf „Fertig“ für jede Einheit; Rückmeldung mit Stichworten und Kommentar"
+ "version": "2026.11.19-3",
+ "notes": "Mehrere Strecken hintereinander (z. B. Kinomap) zählen als eine Einheit"
 }

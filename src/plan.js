@@ -44,6 +44,33 @@ export function isIndoorRide(o) {
   return /technogym|excite|ergometer|indoor|studio|spinning/i.test(o.name || "");
 }
 
+/** Fortsetzungen: gleiche Sportart, gleicher Tag, beginnt höchstens 10 min nach dem Ende des vorigen Teils
+ *  (z. B. zwei Kinomap-Strecken hintereinander) – zählt als eine Einheit. */
+export function segmentsFor(w, workouts) {
+  if (w.type === "strength") return [];
+  const day = (w.start_local || "").slice(0, 10);
+  const same = (workouts || []).filter((o) => o.id !== w.id && !o.duplicate_of && o.type === w.type && (o.start_local || "").slice(0, 10) === day)
+    .sort((a, b) => a.start_utc.localeCompare(b.start_utc));
+  const out = [];
+  let end = Date.parse(w.start_utc) + minutesOf(w) * 60000;
+  for (const o of same) {
+    const st = Date.parse(o.start_utc);
+    if (st < Date.parse(w.start_utc)) continue;
+    if (st - end > 10 * 60000) break;
+    out.push(o);
+    end = Math.max(end, st + minutesOf(o) * 60000);
+  }
+  return out;
+}
+
+/** Ids aller Folgeteile (werden nicht einzeln aufgeführt). */
+export function continuationIds(workouts) {
+  const ids = new Set();
+  for (const w of workouts || []) if (!w.duplicate_of && !ids.has(w.id)) for (const o of segmentsFor(w, workouts)) ids.add(o.id);
+  return ids;
+}
+const chainMinutes = (w, pool) => minutesOf(w) + segmentsFor(w, pool).reduce((a, o) => a + minutesOf(o), 0);
+
 /** Ids aller Rad-Aufwärmeinheiten (werden nicht einzeln aufgeführt). */
 export function warmupIds(workouts, studioDays = null) {
   const ids = new Set();
@@ -120,8 +147,9 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null) {
     if (b.skipped) { result[b.id] = { block: b, workout: null, parts: [], status: "skipped" }; continue; }
     let cands = pool.filter((w) => !used.has(w.id) && categories(w).some((c) => b.accepts.includes(c)));
     if (b.kind === "lang") {
-      cands = cands.filter((w) => categories(w).includes("endurance") && minutesOf(w) >= (b.min_share || 0.75) * b.minutes)
-        .sort((x, y) => minutesOf(y) - minutesOf(x));
+      const cont = continuationIds(pool);
+      cands = cands.filter((w) => !cont.has(w.id) && categories(w).includes("endurance") && chainMinutes(w, pool) >= (b.min_share || 0.75) * b.minutes)
+        .sort((x, y) => chainMinutes(y, pool) - chainMinutes(x, pool));
     } else if (b.kind === "kraft_a" || b.kind === "kraft_b") {
       const pref = b.kind === "kraft_a" ? "studio" : null;
       cands.sort((x, y) => {
@@ -131,14 +159,15 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null) {
         return (categories(x).includes("studio") ? 1 : 0) - (categories(y).includes("studio") ? 1 : 0);
       });
     } else {
-      cands.sort((x, y) => minutesOf(y) - minutesOf(x));
+      const cont = continuationIds(pool);
+      cands = cands.filter((w) => !cont.has(w.id)).sort((x, y) => chainMinutes(y, pool) - chainMinutes(x, pool));
     }
     const w = cands[0] || null;
     const parts = [];
     if (w) {
       used.add(w.id);
-      // Studio: Aufwärmen am Rad gehört dazu
-      for (const o of warmupsFor(w, pool, studioDays)) {
+      // Studio: Aufwärmen am Rad gehört dazu; Ausdauer: direkt folgende Teile gleicher Sportart
+      for (const o of [...warmupsFor(w, pool, studioDays), ...segmentsFor(w, pool)]) {
         if (!used.has(o.id)) { parts.push(o); used.add(o.id); }
       }
     }

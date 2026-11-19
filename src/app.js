@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.19-2";
-import { APP_VERSION } from "./version.js?v=2026.11.19-2";
-import { figure } from "./figures.js?v=2026.11.19-2";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.19-2";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.19-2";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.19-3";
+import { APP_VERSION } from "./version.js?v=2026.11.19-3";
+import { figure } from "./figures.js?v=2026.11.19-3";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.19-3";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.19-3";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
-  spontaneousFor, inboxName, isoDate, minutesOf, warmupsFor, warmupIds,
-} from "./plan.js?v=2026.11.19-2";
+  spontaneousFor, inboxName, isoDate, minutesOf, warmupsFor, warmupIds, segmentsFor, continuationIds,
+} from "./plan.js?v=2026.11.19-3";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -208,8 +208,9 @@ function currentWeek() {
   return wf;
 }
 function studioDays() { return new Set(state.strength.map((e) => e.start_local.slice(0, 10))); }
-function warmups() { return warmupIds(state.workouts, studioDays()); }
-function partsOf(w) { return w.type === "strength" ? warmupsFor(w, state.workouts, studioDays()) : []; }
+/** Einheiten, die nur Teil einer anderen sind (Rad-Aufwärmen, Folgeteile) – nicht einzeln aufführen. */
+function warmups() { const s = warmupIds(state.workouts, studioDays()); for (const id of continuationIds(state.workouts)) s.add(id); return s; }
+function partsOf(w) { return w.type === "strength" ? warmupsFor(w, state.workouts, studioDays()) : segmentsFor(w, state.workouts); }
 function matched(week) {
   const m = matchWeek(week, state.workouts, latestChoices(state.choices), studioDays());
   const bf = blockFb();
@@ -231,8 +232,11 @@ function labels() { return state.plan?.effort_labels || ["locker", "machbar", "f
 function workoutLine(w, parts = []) {
   const mins = minutesOf(w) + parts.reduce((a, o) => a + minutesOf(o), 0);
   const bits = [fmtDay(w.start_local), TYPE_LABELS[w.type] || w.type, `${mins} min`];
-  if (w.distance_m && w.type !== "strength") bits.push(fmtKm(w.distance_m));
-  if (parts.length) bits.push(`inkl. ${parts.map((o) => TYPE_LABELS[o.type] || o.type).join(", ")}`);
+  const same = parts.filter((o) => o.type === w.type), other = parts.filter((o) => o.type !== w.type);
+  const dist = (w.distance_m || 0) + same.reduce((a, o) => a + (o.distance_m || 0), 0);
+  if (dist && w.type !== "strength") bits.push(fmtKm(dist));
+  if (same.length) bits.push(`${same.length + 1} Teile`);
+  if (other.length) bits.push(`inkl. ${other.map((o) => TYPE_LABELS[o.type] || o.type).join(", ")}`);
   return bits.join(" · ");
 }
 

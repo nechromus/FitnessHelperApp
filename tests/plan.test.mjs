@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   categories, matchWeek, evaluate, effortState, rangeState, weekFor, latestChoices, latestFeedback,
-  pendingFeedback, warmupIds, daysUntil, spontaneousFor, inboxName, effectiveBlock, totalMinutes, STATES,
+  pendingFeedback, warmupIds, continuationIds, daysUntil, spontaneousFor, inboxName, effectiveBlock, totalMinutes, STATES,
 } from "../src/plan.js";
 import { putJson, toBase64Utf8, listDir, loadJson, DEFAULTS } from "../src/data.js";
 
@@ -163,4 +163,18 @@ test("Radfahrt ins Studio bleibt eigene Einheit, Ergometer zählt zum Krafttrain
     { id: "hin", type: "ride", source: "strava", name: "Mittagsradfahrt", start_local: "2030-01-07T10:40:00", start_utc: "2030-01-07T09:40:00Z", duration_s: 1080, elevation_gain_m: 12 },
     { id: "ergo", type: "ride", source: "strava", name: "Bike 700 Excite Live: Cross training", start_local: "2030-01-07T11:01:00", start_utc: "2030-01-07T10:01:00Z", duration_s: 840 }];
   assert.deepEqual([...warmupIds(ws, new Set(["2030-01-07"]))], ["ergo"]);
+});
+
+test("Zwei Ruder-Strecken hintereinander zählen als eine Einheit", () => {
+  const wk = { week: 1, start: "2030-01-07", end: "2030-01-13", blocks: [
+    { id: "w1-frei", kind: "frei", title: "Wahl", minutes: 40, accepts: ["endurance", "strength"], corridor: { minutes: [34, 46] }, substitutes: [] }] };
+  const ws = [
+    { id: "a", type: "rowing", source: "strava", start_local: "2030-01-08T12:00:27", start_utc: "2030-01-08T11:00:27Z", duration_s: 988, moving_s: 988 },
+    { id: "b", type: "rowing", source: "strava", start_local: "2030-01-08T12:18:16", start_utc: "2030-01-08T11:18:16Z", duration_s: 708, moving_s: 708 },
+    { id: "c", type: "rowing", source: "strava", start_local: "2030-01-08T19:00:00", start_utc: "2030-01-08T18:00:00Z", duration_s: 1200, moving_s: 1200 }];
+  const m = matchWeek(wk, ws, {});
+  assert.equal(m.blocks[0].workout.id, "a");
+  assert.deepEqual(m.blocks[0].parts.map((p) => p.id), ["b"]);
+  assert.equal(totalMinutes(m.blocks[0]), 28);
+  assert.deepEqual([...continuationIds(ws)], ["b"]);
 });
