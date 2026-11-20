@@ -306,3 +306,4 @@ button.day-link:focus-visible, .card-link:focus-visible, .list-link:focus-visibl
 #fb-note { font: inherit; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; resize: vertical; }
 .fb-summary { display: flex; flex-direction: column; gap: 6px; }
 .tag-reported, .day-block.tag-reported { color: var(--ok); }
+.option-skip strong { color: var(--warn); }

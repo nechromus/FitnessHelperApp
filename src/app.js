@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.19-3";
-import { APP_VERSION } from "./version.js?v=2026.11.19-3";
-import { figure } from "./figures.js?v=2026.11.19-3";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.19-3";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.19-3";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.20-1";
+import { APP_VERSION } from "./version.js?v=2026.11.20-1";
+import { figure } from "./figures.js?v=2026.11.20-1";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.20-1";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.20-1";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf, warmupsFor, warmupIds, segmentsFor, continuationIds,
-} from "./plan.js?v=2026.11.19-3";
+} from "./plan.js?v=2026.11.20-1";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -347,7 +347,7 @@ function renderHeute() {
       el("span", { class: "muted", text: `${b.minutes} min · ${when(b)}` }),
       el("span", { text: b.details }),
       el("div", { class: "row" }, btn(b.day === t ? "Zum Training" : "Details", () => b.day === t ? show("training") : openDetail(next, wf.week), "btn primary"),
-        btn("Ersatz", () => openErsatz(b, wf.week)))));
+        btn("Fällt aus", () => openAusfall(b, wf.week)), btn("Ersatz", () => openErsatz(b, wf.week)))));
   } else if (!wf.before) {
     colA.append(el("section", { class: "card" }, el("strong", { class: "big", text: "Alle Bausteine dieser Woche erledigt" })));
   }
@@ -430,7 +430,7 @@ function renderPlan() {
       card.append(feedbackSummary(feedbackFor(mb)), el("span", { class: "muted small", text: "Wartet auf die Aufzeichnung aus Strava bzw. Technogym." }));
     } else if (mb.status === "open") {
       card.append(el("span", { class: "plan-day", text: when(b) }), el("span", { text: b.details }),
-        el("div", { class: "row" }, btn("Übungen", () => openDetail(mb, week)), btn("Ersatz", () => openErsatz(b, week))));
+        el("div", { class: "row wrap" }, btn("Übungen", () => openDetail(mb, week)), btn("Fällt aus", () => openAusfall(b, week)), btn("Ersatz", () => openErsatz(b, week))));
     } else {
       card.append(el("span", { class: "muted", text: b.substitute?.effect || "" }),
         el("div", { class: "row" }, btn("Doch machen", () => chooseSubstitute(b, { id: "plan", title: "Wie geplant" }))));
@@ -681,7 +681,7 @@ function blockDetail(mb, week, inline = false) {
       el("span", { class: "muted small", text: "Die Aufzeichnung aus Strava bzw. Technogym kommt beim nächsten Abgleich dazu." }));
     actions.append(btn("Rückmeldung ändern", () => openFeedback({ block: b, option: opt?.id, prev: feedbackFor(mb) })));
   } else if (mb.status === "open") {
-    actions.append(btn("Fertig", () => openFeedback({ block: b, option: opt?.id }), "btn primary"), btn("Ersatz", () => openErsatz(b, week)));
+    actions.append(btn("Fertig", () => openFeedback({ block: b, option: opt?.id }), "btn primary"), btn("Fällt aus", () => openAusfall(b, week)), btn("Ersatz", () => openErsatz(b, week)));
   } else {
     actions.append(btn("Doch machen", () => chooseSubstitute(b, { id: "plan", title: "Wie geplant" })));
   }
@@ -969,8 +969,41 @@ function openErsatz(block, week) {
   openSheet("Ersatz wählen", body);
 }
 
-async function chooseSubstitute(block, sub) {
-  const item = { block_id: block.id, substitute_id: sub.id, created_at: new Date().toISOString(), source: "app" };
+const AUSFALL_GRUENDE = ["Keine Zeit", "Termin", "Krank", "Zu müde", "Knie", "Sonstiges"];
+
+/** Geplante Einheit fällt aus: Grund angeben, dann nachholen, ersetzen oder weglassen. */
+function openAusfall(block, week) {
+  let reason = null;
+  const note = el("textarea", { id: "ausfall-note", rows: "2", maxlength: "300", placeholder: "Optional, z. B. bis Montag erkältet" });
+  const daysLeft = Math.max(0, daysUntil(week.end, today()));
+  const recommended = block.substitutes.find((s) => s.recommended && s.minutes > 0 && s.id !== "verschieben");
+  const skip = block.substitutes.find((s) => s.id === "weglassen") || { id: "weglassen", title: "Diese Woche weglassen", minutes: 0, effect: "" };
+  const extra = () => ({ reason, note: note.value.trim() || null });
+  const reasons = el("div", { class: "tag-choices", role: "radiogroup", "aria-label": "Grund" });
+  for (const r of AUSFALL_GRUENDE) {
+    const b = el("button", { type: "button", role: "radio", class: "chip chip-toggle", "aria-checked": "false" }, r);
+    b.addEventListener("click", () => {
+      reason = reason === r ? null : r;
+      for (const x of reasons.children) { const on = x.textContent === reason; x.classList.toggle("active", on); x.setAttribute("aria-checked", on ? "true" : "false"); }
+    });
+    reasons.append(b);
+  }
+  const option = (title, text, onclick, cls = "option") => el("button", { type: "button", class: cls, onclick }, el("strong", { text: title }), el("span", { text }));
+  const body = el("div", { class: "sheet-content" },
+    el("p", { class: "muted", text: `${block.title} · ${block.day ? fmtDay(block.day) : `Woche ${week.week}`}` }),
+    el("strong", { text: "Warum? (optional)" }), reasons,
+    el("label", { class: "field" }, "Kommentar", note),
+    el("strong", { text: "Und jetzt?" }),
+    daysLeft > 0 ? option("Später in dieser Woche nachholen", `Bleibt offen – noch ${daysLeft} ${daysLeft === 1 ? "Tag" : "Tage"} in dieser Woche.`,
+      () => chooseSubstitute(block, { id: "nachholen", title: "Nachholen" }, extra())) : null,
+    recommended ? option(`Stattdessen: ${recommended.title}`, recommended.effect, () => chooseSubstitute(block, recommended, extra())) : null,
+    option("Diese Woche weglassen", skip.effect || "Wird nicht nachgeholt.", () => chooseSubstitute(block, skip, extra()), "option option-skip"),
+    el("span", { class: "muted small", text: "Claude sieht den Grund beim nächsten Abgleich und passt die folgenden Wochen bei Bedarf an." }));
+  openSheet("Fällt aus", body);
+}
+
+async function chooseSubstitute(block, sub, extra = {}) {
+  const item = { block_id: block.id, substitute_id: sub.id, ...extra, created_at: new Date().toISOString(), source: "app" };
   const dlg = $("#sheet");
   try {
     if (!dlg.open) openSheet("Ersatz", el("p", { text: "Speichere …" }));

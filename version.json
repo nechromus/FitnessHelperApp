@@ -1,4 +1,4 @@
 {
- "version": "2026.11.19-3",
- "notes": "Mehrere Strecken hintereinander (z. B. Kinomap) zählen als eine Einheit"
+ "version": "2026.11.20-1",
+ "notes": "Knopf „Fällt aus“: Grund angeben, dann nachholen, ersetzen oder weglassen"
 }

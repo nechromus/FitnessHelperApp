@@ -267,6 +267,18 @@ def main():
         assert len(puts) == n_before + 2 and puts[-2]["path"].endswith(".jpg") and puts[-1]["path"].endswith(".json"), puts[-3:]
         page.click(".tabbar [data-view=training]")
 
+        # Fällt aus: Grund + weglassen
+        page.click(".tabbar [data-view=plan]")
+        page.wait_for_selector("#view-plan .block")
+        if page.locator("#view-plan .block-open button:has-text('Fällt aus')").count():
+            page.locator("#view-plan .block-open button:has-text('Fällt aus')").first.click()
+            page.click("#sheet .chip-toggle:has-text('Krank')")
+            page.fill("#ausfall-note", "Testgrund")
+            page.click("#sheet .option-skip")
+            page.wait_for_selector("#sheet", state="hidden")
+            ch = [x["obj"] for x in puts if x["path"].startswith("inbox/app/choices/")]
+            assert ch[-1]["substitute_id"] == "weglassen" and ch[-1]["reason"] == "Krank" and ch[-1]["note"] == "Testgrund", ch
+
         page.click(".tabbar [data-view=weg]")
         page.wait_for_selector("text=Wie nah bist du dran?")
         page.click(".tabbar [data-view=fortschritt]")
