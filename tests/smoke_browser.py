@@ -73,7 +73,21 @@ WORKOUTS = {"schema_version": 1, "workouts": [
     {"id": "test:run1", "source": "strava", "type": "run", "name": "Testlauf <b>x</b>", "start_local": f"{y}T12:00:00",
      "start_utc": f"{y}T11:00:00Z", "duration_s": 2460, "moving_s": 2400, "distance_m": 4600},
 ]}
+def snap(day, prov, pct):
+    return {"date": day, "provisional": prov, "metrics": {"longest_min": 60}, "scores": {"longest_min": 0.3},
+            "aspects": {a: {"title": f"Aspekt {a}", "percent": pct + i, "model": pct, "calibration": 0, "adjust": 0, "adjust_reasons": [],
+                            "confidence": "mittel", "pro": ["p"], "missing": ["m"]} for i, a in enumerate(["snowboard", "classic15", "skating"])}}
+
+
+READINESS = {"metrics": {"longest_min": {"title": "Längste Einheit", "unit": "min", "zero": 30, "goal": 120}},
+             "weights": {a: {"longest_min": 1} for a in ["snowboard", "classic15", "skating"]},
+             "snapshots": [snap((MONDAY - timedelta(days=8)).isoformat(), False, 40), snap((MONDAY - timedelta(days=1)).isoformat(), False, 45),
+                           snap(TODAY.isoformat(), True, 47)]}
+COACH = {"notes": [{"week": 1, "date": (MONDAY - timedelta(days=1)).isoformat(), "summary": "Testprüfung <b>fett</b>",
+                    "highlights": ["Gut 1"], "watch": ["Achtung 1"], "changes": ["Änderung 1"], "next_focus": "Fokus"}]}
+
 FILES = {
+    "data/readiness.json": READINESS, "data/coach.json": COACH,
     "data/plan.json": PLAN, "data/workouts.json": WORKOUTS, "data/strength.json": {"exercises": []},
     "data/feedback.json": {"feedback": []}, "data/choices.json": {"choices": []},
 }
@@ -281,8 +295,17 @@ def main():
 
         page.click(".tabbar [data-view=weg]")
         page.wait_for_selector("text=Wie nah bist du dran?")
+        assert page.locator("#view-weg svg.spark").count() == 3
+        assert page.locator("#view-weg .delta-up").count() == 3
+        page.click("#view-weg button:has-text('Wie berechnet?')")
+        page.wait_for_selector("#sheet >> text=Kennzahlen")
+        page.click("#sheet-close")
         page.click(".tabbar [data-view=fortschritt]")
         page.wait_for_selector("text=Training pro Woche")
+        page.locator("#view-fortschritt .list-link", has_text="Woche 1").first.click()
+        page.wait_for_selector("#sheet .coach >> text=Achtung 1")
+        assert "<b>" not in page.inner_html("#sheet .coach p") or "&lt;b&gt;" in page.inner_html("#sheet .coach p")
+        page.click("#sheet-close")
         page.click(".tabbar [data-view=heute]")
 
         # ---------------- iPad quer und hoch

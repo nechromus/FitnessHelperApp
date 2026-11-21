@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.20-1";
-import { APP_VERSION } from "./version.js?v=2026.11.20-1";
-import { figure } from "./figures.js?v=2026.11.20-1";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.20-1";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.20-1";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.21-1";
+import { APP_VERSION } from "./version.js?v=2026.11.21-1";
+import { figure } from "./figures.js?v=2026.11.21-1";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.21-1";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.21-1";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
-  spontaneousFor, inboxName, isoDate, minutesOf, warmupsFor, warmupIds, segmentsFor, continuationIds,
-} from "./plan.js?v=2026.11.20-1";
+  spontaneousFor, inboxName, isoDate, minutesOf, totalMinutes, warmupsFor, warmupIds, segmentsFor, continuationIds,
+} from "./plan.js?v=2026.11.21-1";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -16,6 +16,7 @@ const KEY_VIEW = "fh.view";
 const KEY_THEME = "fh.theme";
 const KEY_TICKS = "fh.ticks";
 const KEY_PICK = "fh.pick";
+const KEY_SEEN_REPORT = "fh.seenReport";
 
 // ---------------------------------------------------------------- Speicher (kann fehlen oder werfen)
 const store = {
@@ -36,7 +37,7 @@ applyTheme(store.get(KEY_THEME));
 
 // ---------------------------------------------------------------- Zustand
 const state = {
-  plan: null, workouts: [], strength: [], feedback: [], choices: [], photos: [], outbox: [], loaded: false,
+  plan: null, workouts: [], strength: [], feedback: [], choices: [], photos: [], outbox: [], readiness: null, coach: [], loaded: false,
   view: store.get(KEY_VIEW) || "heute", weekIndex: null, spontan: null,
 };
 const today = () => isoDate(new Date());
@@ -73,7 +74,7 @@ async function loadAll() {
   setStatus("Lade …");
   const dir = settings.dataDir || "data";
   try {
-    const [plan, wdoc, sdoc, fdoc, cdoc, fInbox, cInbox, pdoc, pInbox] = await Promise.all([
+    const [plan, wdoc, sdoc, fdoc, cdoc, fInbox, cInbox, pdoc, pInbox, rdoc, coachDoc] = await Promise.all([
       loadJson(settings, `${dir}/plan.json`, token, null),
       loadJson(settings, `${dir}/workouts.json`, token, { workouts: [] }),
       loadJson(settings, `${dir}/strength.json`, token, { exercises: [] }),
@@ -83,10 +84,14 @@ async function loadAll() {
       listDir(settings, "inbox/app/choices", token),
       loadJson(settings, `${dir}/photos.json`, token, { photos: [] }),
       listDir(settings, "inbox/app/photos", token),
+      loadJson(settings, `${dir}/readiness.json`, token, null),
+      loadJson(settings, `${dir}/coach.json`, token, { notes: [] }),
     ]);
     // Noch nicht übernommene Einträge aus dem App-Eingang dazunehmen
     const pending = await Promise.all([...fInbox, ...cInbox].slice(0, 60).map((p) => loadJson(settings, p, token, null).catch(() => null)));
     state.plan = plan;
+    state.readiness = rdoc;
+    state.coach = coachDoc.notes || [];
     state.workouts = wdoc.workouts || [];
     state.strength = sdoc.exercises || [];
     state.feedback = [...(fdoc.feedback || []), ...pending.filter((x) => x && x.workout_id)];
@@ -316,6 +321,8 @@ function renderHeute() {
 
   const ob = outboxCard();
   if (ob) colA.append(ob);
+  const rc = reportCard();
+  if (rc) colA.append(rc);
 
   // Rückmeldungen
   const covered = warmups();
@@ -454,15 +461,7 @@ function renderWeg() {
   root.replaceChildren();
   if (!state.plan) { root.append(el("p", { class: "muted", text: "Noch kein Trainingsplan." })); return; }
   const t = today();
-  const r = state.plan.readiness;
-  const ready = el("section", { class: "card" }, el("strong", { text: "Wie nah bist du dran?" }), el("span", { class: "muted small", text: `Schätzung vom ${fmtDay(r.as_of)}` }));
-  for (const it of r.items) {
-    ready.append(el("div", { class: "ready" },
-      el("div", { class: "row between" }, el("span", { text: it.title }), el("strong", { text: `${it.percent} %` })),
-      el("div", { class: "progress" }, el("div", { style: `width: ${it.percent}%` })),
-      el("span", { class: "small" }, el("b", { text: "Dafür spricht: " }), it.pro),
-      el("span", { class: "small" }, el("b", { text: "Es fehlt: " }), it.missing)));
-  }
+  const ready = readinessCard();
   const start = state.plan.weeks[0].start;
   const since = state.workouts.filter((w) => !w.duplicate_of && w.start_local.slice(0, 10) >= start);
   const longest = Math.max(0, ...since.filter((w) => w.type !== "strength").map(minutesOf));
@@ -483,10 +482,195 @@ function renderWeg() {
     el("div", { class: "col" }, el("section", { class: "card" }, el("strong", { text: "Meilensteine" }), tl))));
 }
 
+// ---------------------------------------------------------------- Bereitschaft und Wochenbericht
+const ASPECT_ORDER = ["snowboard", "classic15", "skating"];
+function snapshots() { return state.readiness?.snapshots || []; }
+/** Letzter Stichtag (auch vorläufig) und der Stichtag davor (abgeschlossen) zum Vergleich. */
+function readinessNow() {
+  const s = snapshots();
+  if (!s.length) return null;
+  const cur = s[s.length - 1];
+  const prev = [...s].reverse().find((x) => x !== cur && !x.provisional) || null;
+  return { cur, prev };
+}
+
+function sparkline(values, label) {
+  const w = 96, h = 28, max = 100;
+  const pts = values.map((v, i) => `${values.length === 1 ? w / 2 : Math.round((i / (values.length - 1)) * (w - 6)) + 3},${Math.round(h - 3 - (v / max) * (h - 6))}`).join(" ");
+  const s = svg("svg", { width: String(w), height: String(h), viewBox: `0 0 ${w} ${h}`, class: "spark", role: "img", "aria-label": label },
+    svg("polyline", { points: pts, class: "spark-line" }));
+  const last = pts.split(" ").pop().split(",");
+  s.append(svg("circle", { cx: last[0], cy: last[1], r: "3", class: "spark-dot" }));
+  return s;
+}
+
+function deltaChip(d) {
+  if (d == null || Math.abs(d) < 1) return chip("±0", "delta-flat");
+  return chip(`${d > 0 ? "▲ +" : "▼ "}${d}`, d > 0 ? "delta-up" : "delta-down");
+}
+
+function readinessCard() {
+  const rn = readinessNow();
+  const card = el("section", { class: "card" }, el("div", { class: "row between" }, el("strong", { text: "Wie nah bist du dran?" }),
+    rn ? btn("Wie berechnet?", () => openReadinessInfo(), "btn small-btn") : null));
+  if (!rn) {
+    const r = state.plan.readiness;
+    card.append(el("span", { class: "muted small", text: `Schätzung vom ${fmtDay(r.as_of)}` }));
+    for (const it of r.items) {
+      card.append(el("div", { class: "ready" },
+        el("div", { class: "row between" }, el("span", { text: it.title }), el("strong", { text: `${it.percent} %` })),
+        el("div", { class: "progress" }, el("div", { style: `width: ${it.percent}%` })),
+        el("span", { class: "small" }, el("b", { text: "Dafür spricht: " }), it.pro),
+        el("span", { class: "small" }, el("b", { text: "Es fehlt: " }), it.missing)));
+    }
+    return card;
+  }
+  const { cur, prev } = rn;
+  const checked = state.coach.find((n) => n.date === cur.date);
+  card.append(el("span", { class: "muted small", text: cur.provisional
+    ? `Stand heute (vorläufig) · Vergleich mit ${fmtDay(prev?.date)}`
+    : `Stand ${fmtDay(cur.date)}${checked ? " · von Claude geprüft" : ""}${prev ? ` · Vergleich mit ${fmtDay(prev.date)}` : ""}` }));
+  for (const id of ASPECT_ORDER) {
+    const a = cur.aspects[id];
+    if (!a) continue;
+    const d = prev ? a.percent - prev.aspects[id].percent : null;
+    const hist = snapshots().filter((s) => !s.provisional || s === cur).map((s) => s.aspects[id].percent);
+    card.append(el("div", { class: "ready" },
+      el("div", { class: "row between" }, el("span", { text: a.title }),
+        el("span", { class: "row" }, deltaChip(d), el("strong", { text: `${a.percent} %` }))),
+      el("div", { class: "row between ready-bar" }, el("div", { class: "progress grow" }, el("div", { style: `width: ${a.percent}%` })),
+        sparkline(hist, `Verlauf ${a.title}: ${hist.join(", ")} %`)),
+      a.pro.length ? el("span", { class: "small" }, el("b", { text: "Dafür spricht: " }), a.pro.join(" · ")) : null,
+      a.missing.length ? el("span", { class: "small" }, el("b", { text: "Es fehlt: " }), a.missing.join(" · ")) : null,
+      a.adjust_reasons?.length ? el("span", { class: "small muted" }, el("b", { text: `Von Claude justiert (${a.adjust > 0 ? "+" : ""}${a.adjust}): ` }), a.adjust_reasons.join(" · ")) : null,
+      el("span", { class: "muted small", text: `Sicherheit der Schätzung: ${a.confidence}` })));
+  }
+  return card;
+}
+
+function openReadinessInfo() {
+  const r = state.readiness;
+  const { cur } = readinessNow();
+  const body = el("div", { class: "sheet-content" },
+    el("p", { text: "Jede Kennzahl wird zwischen Ausgangsniveau (0) und Ziel (1) eingeordnet und je Zielaspekt gewichtet. Startwert ist die Schätzung vom 15.11.; Veränderungen werden geglättet, damit ein einzelner Ausreißer nichts kippt. Sonntags prüft Claude die Werte und justiert bei Bedarf – mit Begründung." }));
+  const list = el("ul", { class: "mini-list" });
+  for (const [k, m] of Object.entries(r.metrics)) {
+    const v = cur.metrics[k], s = cur.scores[k];
+    list.append(el("li", {}, el("span", { text: m.title }),
+      el("span", { class: "muted", text: v == null ? "keine Daten" : `${String(v).replace(".", ",")} ${m.unit} · Ziel ${String(m.goal).replace(".", ",")} ${m.unit}${s != null ? ` · ${Math.round(s * 100)} %` : ""}` })));
+  }
+  body.append(el("strong", { text: "Kennzahlen" }), list, el("strong", { text: "Gewichte" }));
+  for (const id of ASPECT_ORDER) {
+    const w = r.weights[id];
+    body.append(el("p", { class: "small" }, el("b", { text: `${cur.aspects[id].title}: ` }),
+      Object.entries(w).map(([k, x]) => `${r.metrics[k].title.split(" (")[0].split(":")[0]} ${Math.round(x * 100)} %`).join(" · ")));
+  }
+  openSheet("So wird die Bereitschaft berechnet", body);
+}
+
+/** Wochen, die schon begonnen haben (neueste zuerst). */
+function reportWeeks() {
+  if (!state.plan) return [];
+  return state.plan.weeks.filter((w) => w.start <= today()).slice().reverse();
+}
+
+function weekReport(week) {
+  const m = matched(week);
+  const active = m.blocks.filter((b) => b.status !== "skipped");
+  const done = active.filter(isDone);
+  const t = today();
+  const ws = state.workouts.filter((w) => !w.duplicate_of && w.start_local.slice(0, 10) >= week.start && w.start_local.slice(0, 10) <= week.end);
+  const mins = ws.reduce((a, w) => a + minutesOf(w), 0);
+  const planned = active.reduce((a, b) => a + b.block.minutes, 0);
+  const fbs = state.feedback.filter((f) => {
+    const day = f.day || (f.workout_id && state.workouts.find((w) => w.id === f.workout_id)?.start_local.slice(0, 10)) || f.created_at.slice(0, 10);
+    return day >= week.start && day <= week.end;
+  });
+  const tags = {};
+  for (const f of fbs) for (const tg of f.tags || []) tags[tg] = (tags[tg] || 0) + 1;
+  const note = state.coach.find((n) => n.week === week.week);
+  const snapEnd = snapshots().find((s) => s.date === week.end) || (week.end > t ? snapshots().slice(-1)[0] : null);
+  const snapStart = [...snapshots()].reverse().find((s) => s.date < week.start && !s.provisional) || snapshots()[0];
+  return { week, m, active, done, mins, planned, fbs, tags, note, snapEnd, snapStart, running: week.end >= t };
+}
+
+function openWeekReport(week) {
+  const r = weekReport(week);
+  store.set(KEY_SEEN_REPORT, String(week.week));
+  const body = el("div", { class: "sheet-content" },
+    el("p", { class: "muted", text: `${fmtDay(week.start)} – ${fmtDay(week.end)} · ${week.focus}${r.running ? " · läuft noch" : ""}` }));
+  if (r.note) {
+    body.append(el("section", { class: "coach" },
+      el("span", { class: "eyebrow", text: `Claudes Prüfung · ${fmtDay(r.note.date)}` }),
+      el("p", { text: r.note.summary }),
+      r.note.highlights?.length ? el("div", {}, el("strong", { text: "Gut gelaufen" }), el("ul", { class: "guide-list" }, ...r.note.highlights.map((x) => el("li", { text: x })))) : null,
+      r.note.watch?.length ? el("div", {}, el("strong", { text: "Darauf achten" }), el("ul", { class: "guide-list" }, ...r.note.watch.map((x) => el("li", { text: x })))) : null,
+      r.note.changes?.length ? el("div", {}, el("strong", { text: "Angepasst" }), el("ul", { class: "guide-list" }, ...r.note.changes.map((x) => el("li", { text: x })))) : null,
+      r.note.next_focus ? el("p", {}, el("b", { text: "Nächste Woche: " }), r.note.next_focus) : null));
+  } else {
+    body.append(el("p", { class: "note", text: r.running ? "Claude prüft die Woche am Sonntagabend." : "Für diese Woche gibt es noch keine Prüfung von Claude." }));
+  }
+  const tiles = el("div", { class: "tiles" });
+  const tile = (label, value) => tiles.append(el("div", { class: "tile" }, el("span", { class: "muted small", text: label }), el("strong", { text: value })));
+  tile("Bausteine", `${r.done.length} / ${r.active.length}`);
+  const hm = (m) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}`;
+  tile("Zeit · Plan", `${hm(r.mins)} / ${hm(r.planned)} h`);
+  const effs = r.fbs.map((f) => f.effort);
+  if (effs.length) tile("Ø Gefühl", labels()[Math.round(effs.reduce((a, b) => a + b, 0) / effs.length) - 1]);
+  const kn = r.fbs.map((f) => f.knee).filter((k) => k != null);
+  if (kn.length) tile("Knie (max.)", (state.plan.knee_labels || [])[Math.max(...kn)] || String(Math.max(...kn)));
+  body.append(tiles, el("strong", { text: "Plan und Umsetzung" }));
+  const list = el("ul", { class: "mini-list" });
+  for (const mb of byDay(r.m.blocks)) {
+    list.append(el("li", {}, el("button", { type: "button", class: "list-link", onclick: () => openDetail(mb, week) },
+      el("span", { text: mb.block.title }),
+      el("span", { class: `tag tag-${mb.status}`, text: mb.status === "done" ? `${totalMinutes(mb)} / ${mb.block.minutes} min` : statusText(mb) }))));
+  }
+  body.append(list);
+  if (Object.keys(r.tags).length) {
+    body.append(el("strong", { text: "Deine Stichworte" }),
+      el("div", { class: "row wrap" }, ...Object.entries(r.tags).sort((a, b) => b[1] - a[1]).map(([k, n]) => chip(n > 1 ? `${k} ×${n}` : k))));
+  }
+  if (r.snapEnd && r.snapStart) {
+    const rl = el("ul", { class: "mini-list" });
+    for (const id of ASPECT_ORDER) {
+      const a = r.snapEnd.aspects[id], b = r.snapStart.aspects[id];
+      rl.append(el("li", {}, el("span", { text: a.title }), el("span", { class: "row" }, deltaChip(a.percent - b.percent), el("strong", { text: `${a.percent} %` }))));
+    }
+    body.append(el("strong", { text: r.snapEnd.provisional ? "Bereitschaft (vorläufig)" : "Bereitschaft" }), rl);
+  }
+  openSheet(`Wochenbericht · Woche ${week.week}`, body);
+}
+
+/** Hinweis auf der Startseite, wenn Claudes Prüfung der letzten Woche neu ist. */
+function reportCard() {
+  const last = state.coach.slice().sort((a, b) => b.week - a.week)[0];
+  if (!last || store.get(KEY_SEEN_REPORT) === String(last.week)) return null;
+  const week = state.plan?.weeks.find((w) => w.week === last.week);
+  if (!week) return null;
+  return el("section", { class: "card card-report" },
+    el("span", { class: "eyebrow", text: `Wochenbericht · Woche ${week.week}` }),
+    el("strong", { text: last.summary.length > 140 ? last.summary.slice(0, 137) + " …" : last.summary }),
+    btn("Bericht ansehen", () => { openWeekReport(week); render(); }, "btn primary"));
+}
+
 // ---------------------------------------------------------------- Fortschritt
 function renderFortschritt() {
   const root = $("#view-fortschritt");
   root.replaceChildren();
+  const weeksDone = reportWeeks();
+  if (weeksDone.length) {
+    const rep = el("section", { class: "card" }, el("strong", { text: "Wochenberichte" }));
+    const ul = el("ul", { class: "plain-list" });
+    for (const wk of weeksDone) {
+      const r = weekReport(wk);
+      ul.append(el("li", {}, el("button", { type: "button", class: "list-link", onclick: () => openWeekReport(wk) },
+        el("span", { text: `Woche ${wk.week} · ${fmtDay(wk.start).slice(3)}–${fmtDay(wk.end).slice(3)} · ${r.done.length}/${r.active.length}` }),
+        el("span", { class: "row" }, r.note ? chip("geprüft", "tag-done") : r.running ? chip("läuft") : null, el("span", { class: "chev", "aria-hidden": "true", text: "›" })))));
+    }
+    rep.append(ul);
+    root.append(rep);
+  }
   const ws = state.workouts.filter((w) => !w.duplicate_of);
   if (!ws.length) { root.append(el("p", { class: "muted", text: "Noch keine Einheiten." })); return; }
   // Stunden der letzten 8 Wochen (Mo–So)

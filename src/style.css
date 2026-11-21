@@ -307,3 +307,18 @@ button.day-link:focus-visible, .card-link:focus-visible, .list-link:focus-visibl
 .fb-summary { display: flex; flex-direction: column; gap: 6px; }
 .tag-reported, .day-block.tag-reported { color: var(--ok); }
 .option-skip strong { color: var(--warn); }
+
+/* Bereitschaft mit Verlauf, Wochenbericht */
+.ready-bar { align-items: center; gap: 10px; }
+.ready-bar .grow { flex: 1; }
+.spark { flex: 0 0 auto; }
+.spark-line { fill: none; stroke: var(--accent-strong); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.spark-dot { fill: var(--accent-strong); }
+.chip.delta-up { color: var(--ok); border-color: var(--ok); font-weight: 700; }
+.chip.delta-down { color: var(--err); border-color: var(--err); font-weight: 700; }
+.chip.delta-flat { color: var(--muted); }
+.coach { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
+.coach .eyebrow { color: var(--accent-strong); }
+.coach p { margin: 0; }
+.card-report { border: 1.5px solid var(--hero-border); }
+.card-report .eyebrow { color: var(--accent-strong); }
