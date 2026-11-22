@@ -106,6 +106,15 @@ export function latestChoices(choices) {
   return by;
 }
 
+/** Manuelle Zuordnung „Welches Training war das?“: workout_id → block_id (oder "extra"), neueste gilt. */
+export function latestAssignments(assignments) {
+  const by = {}, at = {};
+  for (const a of assignments || []) {
+    if (!at[a.workout_id] || at[a.workout_id] <= a.created_at) { by[a.workout_id] = a.block_id; at[a.workout_id] = a.created_at; }
+  }
+  return by;
+}
+
 export function latestFeedback(feedback) {
   const by = {};
   for (const f of feedback || []) {
@@ -134,7 +143,7 @@ const ORDER = ["kraft_a", "lang", "kraft_b", "frei"];
  * Ordnet die Einheiten einer Woche den Bausteinen zu.
  * Reihenfolge: Kraft A (Studio zuerst), Lang (längste Ausdauer ≥ min_share), Kraft B, Training nach Wahl.
  */
-export function matchWeek(week, workouts, choices = {}, studioDays = null) {
+export function matchWeek(week, workouts, choices = {}, studioDays = null, assigned = {}) {
   const categories = (w) => cats(w, studioDays);
   const pool = (workouts || [])
     .filter((w) => !w.duplicate_of && w.start_local && w.start_local.slice(0, 10) >= week.start && w.start_local.slice(0, 10) <= week.end)
@@ -142,8 +151,26 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null) {
   const used = new Set();
   const blocks = week.blocks.map((b) => effectiveBlock(b, choices[b.id]));
   const result = {};
+  const attach = (b, w, manual) => {
+    const parts = [];
+    used.add(w.id);
+    // Studio: Aufwärmen am Rad gehört dazu; Ausdauer: direkt folgende Teile gleicher Sportart
+    for (const o of [...warmupsFor(w, pool, studioDays), ...segmentsFor(w, pool)]) {
+      if (!used.has(o.id)) { parts.push(o); used.add(o.id); }
+    }
+    result[b.id] = { block: b, workout: w, parts, status: "done", manual };
+  };
+  // 1. Von André zugeordnete Einheiten haben Vorrang; "extra" bleibt zusätzlich
+  for (const w of pool) {
+    const bid = assigned[w.id];
+    if (!bid) continue;
+    if (bid === "extra") { used.add(w.id); continue; }
+    const b = blocks.find((x) => x.id === bid);
+    if (b && !result[b.id]) attach(b, w, true);
+  }
   const sorted = [...blocks].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
   for (const b of sorted) {
+    if (result[b.id]) continue;
     if (b.skipped) { result[b.id] = { block: b, workout: null, parts: [], status: "skipped" }; continue; }
     let cands = pool.filter((w) => !used.has(w.id) && categories(w).some((c) => b.accepts.includes(c)));
     if (b.kind === "lang") {
@@ -163,19 +190,15 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null) {
       cands = cands.filter((w) => !cont.has(w.id)).sort((x, y) => chainMinutes(y, pool) - chainMinutes(x, pool));
     }
     const w = cands[0] || null;
-    const parts = [];
-    if (w) {
-      used.add(w.id);
-      // Studio: Aufwärmen am Rad gehört dazu; Ausdauer: direkt folgende Teile gleicher Sportart
-      for (const o of [...warmupsFor(w, pool, studioDays), ...segmentsFor(w, pool)]) {
-        if (!used.has(o.id)) { parts.push(o); used.add(o.id); }
-      }
-    }
-    result[b.id] = { block: b, workout: w, parts, status: w ? "done" : "open" };
+    if (w) attach(b, w, false);
+    else result[b.id] = { block: b, workout: null, parts: [], status: "open" };
   }
+  const extraIds = new Set(pool.filter((w) => assigned[w.id] === "extra").map((w) => w.id));
+  // Folgeteile/Aufwärmen einer zusätzlichen Einheit nicht einzeln
+  for (const w of pool) if (extraIds.has(w.id)) for (const o of [...warmupsFor(w, pool, studioDays), ...segmentsFor(w, pool)]) used.add(o.id);
   return {
     blocks: blocks.map((b) => result[b.id]),
-    extra: pool.filter((w) => !used.has(w.id)),
+    extra: pool.filter((w) => !used.has(w.id) || extraIds.has(w.id)),
   };
 }
 

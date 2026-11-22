@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   categories, matchWeek, evaluate, effortState, rangeState, weekFor, latestChoices, latestFeedback,
-  pendingFeedback, warmupIds, continuationIds, daysUntil, spontaneousFor, inboxName, effectiveBlock, totalMinutes, STATES,
+  pendingFeedback, warmupIds, continuationIds, latestAssignments, daysUntil, spontaneousFor, inboxName, effectiveBlock, totalMinutes, STATES,
 } from "../src/plan.js";
 import { putJson, toBase64Utf8, listDir, loadJson, DEFAULTS } from "../src/data.js";
 
@@ -177,4 +177,18 @@ test("Zwei Ruder-Strecken hintereinander zählen als eine Einheit", () => {
   assert.deepEqual(m.blocks[0].parts.map((p) => p.id), ["b"]);
   assert.equal(totalMinutes(m.blocks[0]), 28);
   assert.deepEqual([...continuationIds(ws)], ["b"]);
+});
+
+test("Manuelle Zuordnung: spontane Einheit zählt für den gewählten Baustein oder als zusätzlich", () => {
+  const ws = [W("s:run", "run", "strava", "2026-11-17T18:00:00", 45, { distance_m: 5000 }),
+              W("s:row", "rowing", "strava", "2026-11-18T18:00:00", 30)];
+  const asg = latestAssignments([
+    { workout_id: "s:run", block_id: "w1-kraft-b", created_at: "2026-11-17T19:00:00Z" },
+    { workout_id: "s:row", block_id: "extra", created_at: "2026-11-18T19:00:00Z" }]);
+  const m = matchWeek(week, ws, {}, null, asg);
+  const kb = m.blocks.find((b) => b.block.kind === "kraft_b");
+  assert.equal(kb.workout.id, "s:run");
+  assert.equal(kb.manual, true);
+  assert.equal(m.blocks.find((b) => b.block.kind === "frei").status, "open");
+  assert.deepEqual(m.extra.map((w) => w.id), ["s:row"]);
 });

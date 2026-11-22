@@ -155,8 +155,8 @@ def main():
 
         # Rückmeldung
         page.click("text=Wie war's?")
-        page.click("#sheet [role=radio]:has-text('fordernd')")
-        page.click("#sheet [role=radio]:has-text('ruhig')")
+        page.click("#sheet [aria-label='Gefühlte Belastung'] [role=radio]:has-text('fordernd')")
+        page.click("#sheet [aria-label='Knie links'] [role=radio]:has-text('ruhig')")
         page.fill("#fb-note", "Gegenwind")
         page.click("#sheet button:has-text('Speichern')")
         page.wait_for_selector("#sheet", state="hidden")
@@ -250,7 +250,7 @@ def main():
         page.wait_for_selector("#view-plan .block-open")
         page.locator("#view-plan .block-open .card-link").first.click()
         page.click("#sheet .detail button:has-text('Fertig')")
-        page.click("#sheet [role=radio]:has-text('machbar')")
+        page.click("#sheet [aria-label='Gefühlte Belastung'] [role=radio]:has-text('machbar')")
         page.click("#sheet .chip-toggle:has-text('Beine schwer')")
         page.fill("#fb-note", "Testkommentar")
         page.click("#sheet button:has-text('Fertig – speichern')")
@@ -292,6 +292,19 @@ def main():
             page.wait_for_selector("#sheet", state="hidden")
             ch = [x["obj"] for x in puts if x["path"].startswith("inbox/app/choices/")]
             assert ch[-1]["substitute_id"] == "weglassen" and ch[-1]["reason"] == "Krank" and ch[-1]["note"] == "Testgrund", ch
+
+        # Spontane Einheit nachträglich zuordnen: als „Zusätzlich“
+        page.click(".tabbar [data-view=fortschritt]")
+        page.wait_for_selector("#view-fortschritt .plain-list .list-link")
+        page.locator("#view-fortschritt .list-link", has_text="Laufen").first.click()
+        page.click("#sheet button:has-text('Zuordnung ändern')")
+        page.click("#sheet [role=radio]:has-text('Zusätzlich')")
+        page.wait_for_selector("#sheet", state="hidden")
+        asg = [x["obj"] for x in puts if x["path"].startswith("inbox/app/assign/")]
+        assert asg and asg[-1]["workout_id"] == "test:run1" and asg[-1]["block_id"] == "extra", asg
+        if YESTERDAY >= MONDAY:
+            page.click(".tabbar [data-view=plan]")
+            page.wait_for_selector("#view-plan >> text=Zusätzlich")
 
         page.click(".tabbar [data-view=weg]")
         page.wait_for_selector("text=Wie nah bist du dran?")

@@ -322,3 +322,4 @@ button.day-link:focus-visible, .card-link:focus-visible, .list-link:focus-visibl
 .coach p { margin: 0; }
 .card-report { border: 1.5px solid var(--hero-border); }
 .card-report .eyebrow { color: var(--accent-strong); }
+.options-list { display: flex; flex-direction: column; gap: 8px; }
