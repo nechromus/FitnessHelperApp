@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.22-2";
-import { APP_VERSION } from "./version.js?v=2026.11.22-2";
-import { figure } from "./figures.js?v=2026.11.22-2";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.22-2";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.22-2";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.22-3";
+import { APP_VERSION } from "./version.js?v=2026.11.22-3";
+import { figure } from "./figures.js?v=2026.11.22-3";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.22-3";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.22-3";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestAssignments, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf, totalMinutes, warmupsFor, warmupIds, segmentsFor, continuationIds,
-} from "./plan.js?v=2026.11.22-2";
+} from "./plan.js?v=2026.11.22-3";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -74,7 +74,7 @@ async function loadAll() {
   setStatus("Lade …");
   const dir = settings.dataDir || "data";
   try {
-    const [plan, wdoc, sdoc, fdoc, cdoc, fInbox, cInbox, pdoc, pInbox, rdoc, coachDoc, adoc, aInbox] = await Promise.all([
+    const [plan, wdoc, sdoc, fdoc, cdoc, fInbox, cInbox, pdoc, pInbox, rdoc, coachDoc, adoc, aInbox, mInbox] = await Promise.all([
       loadJson(settings, `${dir}/plan.json`, token, null),
       loadJson(settings, `${dir}/workouts.json`, token, { workouts: [] }),
       loadJson(settings, `${dir}/strength.json`, token, { exercises: [] }),
@@ -88,6 +88,7 @@ async function loadAll() {
       loadJson(settings, `${dir}/coach.json`, token, { notes: [] }),
       loadJson(settings, `${dir}/assignments.json`, token, { assignments: [] }),
       listDir(settings, "inbox/app/assign", token),
+      listDir(settings, "inbox/app/manual", token),
     ]);
     // Noch nicht übernommene Einträge aus dem App-Eingang dazunehmen
     const pending = await Promise.all([...fInbox, ...cInbox].slice(0, 60).map((p) => loadJson(settings, p, token, null).catch(() => null)));
@@ -102,6 +103,8 @@ async function loadAll() {
     state.photos = [...(pdoc.photos || []), ...pPending.filter((x) => x && x.file)];
     const aPending = await Promise.all(aInbox.slice(-30).map((p) => loadJson(settings, p, token, null).catch(() => null)));
     state.assignments = [...(adoc.assignments || []), ...aPending.filter((x) => x && x.workout_id && x.block_id)];
+    const mPending = await Promise.all(mInbox.slice(-30).map((p) => loadJson(settings, p, token, null).catch(() => null)));
+    for (const w of mPending) if (w && w.id && !state.workouts.some((x) => x.id === w.id)) state.workouts.push({ ...w, source: "app" });
     mergeOutbox();
     state.loaded = true;
     setStatus(plan ? "" : "Noch kein Trainingsplan im Daten-Repo (plan.json fehlt).", plan ? "" : "warn");
@@ -135,6 +138,7 @@ function mergeOutbox() {
     if (it.path.startsWith("inbox/app/choices/") && !state.choices.some((c) => c.created_at === it.obj.created_at && c.block_id === it.obj.block_id)) state.choices.push(it.obj);
     if (it.path.startsWith("inbox/app/photos/") && !state.photos.some((p) => p.file === it.obj.file)) state.photos.push(it.obj);
     if (it.path.startsWith("inbox/app/assign/") && !state.assignments.some((x) => x.created_at === it.obj.created_at && x.workout_id === it.obj.workout_id)) state.assignments.push(it.obj);
+    if (it.path.startsWith("inbox/app/manual/") && !state.workouts.some((x) => x.id === it.obj.id)) state.workouts.push({ ...it.obj, source: "app" });
   }
 }
 
@@ -222,13 +226,16 @@ function studioDays() { return new Set(state.strength.map((e) => e.start_local.s
 function warmups() { const s = warmupIds(state.workouts, studioDays()); for (const id of continuationIds(state.workouts)) s.add(id); return s; }
 function partsOf(w) { return w.type === "strength" ? warmupsFor(w, state.workouts, studioDays()) : segmentsFor(w, state.workouts); }
 function matched(week) {
-  const m = matchWeek(week, state.workouts, latestChoices(state.choices), studioDays(), latestAssignments(state.assignments));
+  const m = matchWeek(week, state.workouts, latestChoices(state.choices), studioDays(),
+    latestAssignments(state.assignments.map((a) => ({ ...a, workout_id: primaryId(a.workout_id) }))));
   const bf = blockFb();
   // Selbst als fertig gemeldet, Einheit aus Strava/Technogym fehlt noch → „gemeldet“
   for (const mb of m.blocks) if (mb.status === "open" && bf[mb.block.id]) mb.status = "reported";
   return m;
 }
-function fb() { return latestFeedback(state.feedback.filter((f) => f.workout_id)); }
+/** Von Hand eingetragene Einheit, die später aus Strava/Technogym kam → Rückmeldung/Zuordnung wandert mit. */
+function primaryId(id) { return state.workouts.find((w) => w.id === id)?.duplicate_of || id; }
+function fb() { return latestFeedback(state.feedback.filter((f) => f.workout_id).map((f) => ({ ...f, workout_id: primaryId(f.workout_id) }))); }
 /** Rückmeldungen über „Fertig“ (ohne Einheit) je Baustein, neueste gilt. */
 function blockFb() {
   const by = {};
@@ -748,6 +755,84 @@ function openAssign(w) {
   if (!picker) { body.append(el("p", { text: "Diese Einheit liegt außerhalb des Trainingsplans." })); openSheet("Welches Training war das?", body); return; }
   body.append(picker);
   openSheet("Welches Training war das?", body);
+}
+
+// ---------------------------------------------------------------- Training von Hand hinzufügen
+const ADD_TYPES = [
+  { id: "run", title: "Laufen", dist: true }, { id: "rowing", title: "Rudern", dist: true }, { id: "ride", title: "Rad", dist: true },
+  { id: "strength", title: "Kraft zu Hause" }, { id: "strength", title: "Studio", location: "studio" },
+  { id: "hike", title: "Wandern", dist: true }, { id: "walk", title: "Gehen", dist: true }, { id: "swim", title: "Schwimmen", dist: true },
+  { id: "workout", title: "Sonstiges" },
+];
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function openAdd() {
+  if (!state.plan) return;
+  let kind = null, effort = null, knee = null, assignTo = null;
+  const now = new Date();
+  const dateIn = el("input", { type: "date", id: "add-date", value: today(), max: today() });
+  const timeIn = el("input", { type: "time", id: "add-time", value: `${pad2(Math.max(0, now.getHours() - 1))}:${pad2(now.getMinutes())}` });
+  const durIn = el("input", { type: "number", id: "add-min", min: "1", max: "600", inputmode: "numeric", placeholder: "z. B. 40" });
+  const distIn = el("input", { type: "number", id: "add-km", min: "0", max: "200", step: "0.1", inputmode: "decimal", placeholder: "optional" });
+  const note = el("textarea", { id: "add-note", rows: "2", maxlength: "500", placeholder: "Optional, z. B. Uhr vergessen" });
+  const knees = state.plan.knee_labels || ["ruhig", "leicht", "deutlich", "stark"];
+  const saveBtn = btn("Hinzufügen", null, "btn primary full");
+  const body = el("div", { class: "sheet-content" });
+  const draft = () => {
+    const d = dateIn.value || today();
+    const start = new Date(`${d}T${timeIn.value || "12:00"}:00`);
+    const mins = Math.round(Number(durIn.value) || 0);
+    const k = ADD_TYPES[kind] || {};
+    return { id: `app:${new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "")}`, type: k.id || "workout",
+      name: `Von Hand: ${k.title || "Training"}`, start_local: `${d}T${pad2(start.getHours())}:${pad2(start.getMinutes())}:00`,
+      start_utc: start.toISOString().replace(/\.\d+Z$/, "Z"), duration_s: mins * 60, moving_s: mins * 60,
+      distance_m: k.dist && Number(distIn.value) > 0 ? Math.round(Number(distIn.value) * 1000) : (k.id === "strength" ? 0 : null),
+      location: k.location || null, source: "app" };
+  };
+  const draw = () => {
+    const k = ADD_TYPES[kind];
+    const w = draft();
+    const wk = weekOf(w);
+    const picker = kind != null && wk ? assignPicker(w, assignTo ?? "extra", (id) => { assignTo = id; draw(); }) : null;
+    body.replaceChildren(
+      el("strong", { text: "Was hast du gemacht?" }),
+      choiceGroup("Sportart", ADD_TYPES.map((x) => x.title), kind, (i) => { kind = i; draw(); }),
+      el("div", { class: "form-row" }, el("label", { class: "field" }, "Datum", dateIn), el("label", { class: "field" }, "Beginn", timeIn)),
+      el("div", { class: "form-row" }, el("label", { class: "field" }, "Dauer (min)", durIn), k?.dist ? el("label", { class: "field" }, "Strecke (km)", distIn) : null),
+      picker ? el("strong", { text: "Welches Training war das?" }) : null, picker,
+      el("strong", { text: "Wie war's? (optional)" }),
+      choiceGroup("Gefühlte Belastung", labels(), effort == null ? null : effort - 1, (i) => { effort = effort === i + 1 ? null : i + 1; draw(); }),
+      el("strong", { text: "Knie links (optional)" }),
+      choiceGroup("Knie links", knees, knee, (i) => { knee = knee === i ? null : i; draw(); }),
+      el("label", { class: "field" }, "Kommentar", note),
+      saveBtn,
+      el("span", { class: "muted small", text: "Kommt die Einheit später doch aus Strava oder Technogym, ersetzt die Aufzeichnung diesen Eintrag – deine Angaben bleiben." }));
+    saveBtn.disabled = kind == null || !(Number(durIn.value) > 0);
+  };
+  for (const i of [durIn, dateIn, timeIn, distIn]) i.addEventListener("input", () => { saveBtn.disabled = kind == null || !(Number(durIn.value) > 0); });
+  dateIn.addEventListener("change", draw);
+  saveBtn.addEventListener("click", async () => {
+    const w = draft();
+    if (!(w.duration_s > 0) || kind == null) return;
+    if (note.value.trim() && effort == null) w.note = note.value.trim();
+    saveBtn.disabled = true;
+    sheetStatus("Speichere …");
+    try {
+      await save(`inbox/app/manual/${w.id.slice(4)}_add.json`, w, `App: Training hinzugefügt ${w.start_local.slice(0, 10)} ${ADD_TYPES[kind].title}`);
+      state.workouts.push(w);
+      const target = assignTo ?? "extra";
+      if (weekOf(w)) await saveAssignment(w, target);
+      if (effort != null) {
+        const item = { workout_id: w.id, effort, knee, tags: [], note: note.value.trim() || null, created_at: new Date().toISOString(), source: "app" };
+        await save(inboxName("inbox/app/feedback", w.id), item, "App: Rückmeldung (von Hand)");
+        state.feedback.push(item);
+      }
+      $("#sheet").close();
+      render();
+    } catch (e) { sheetStatus(e.message, "error"); saveBtn.disabled = false; }
+  });
+  draw();
+  openSheet("Training hinzufügen", body);
 }
 
 // ---------------------------------------------------------------- Training heute + Details
@@ -1339,6 +1424,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(() => flushNow(), 2 * 60 * 1000);
   for (const b of $$(".nav-btn[data-view]")) b.addEventListener("click", () => show(b.dataset.view));
   $("#btn-load").addEventListener("click", loadAll);
+  $("#btn-add").addEventListener("click", openAdd);
+  $("#btn-add-side").addEventListener("click", openAdd);
   $("#btn-settings").addEventListener("click", openSettings);
   $("#btn-settings-side").addEventListener("click", openSettings);
   $("#settings-form").addEventListener("submit", saveSettings);

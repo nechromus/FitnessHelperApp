@@ -14,8 +14,8 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="src/style.css?v=2026.11.22-2">
-  <script type="module" src="src/app.js?v=2026.11.22-2"></script>
+  <link rel="stylesheet" href="src/style.css?v=2026.11.22-3">
+  <script type="module" src="src/app.js?v=2026.11.22-3"></script>
 </head>
 <body>
 <div class="shell">
@@ -27,6 +27,7 @@
     <button type="button" class="nav-btn" data-view="weg">Weg</button>
     <button type="button" class="nav-btn" data-view="fortschritt">Fortschritt</button>
     <div class="side-foot">
+      <button type="button" class="nav-btn small" id="btn-add-side">+ Training hinzufügen</button>
       <span id="side-countdown"></span>
       <button type="button" class="nav-btn small" id="btn-settings-side">⚙︎ Einstellungen</button>
     </div>
@@ -36,6 +37,7 @@
     <header class="bar">
       <h1 id="view-title">Heute</h1>
       <div class="actions">
+        <button id="btn-add" type="button" aria-label="Training hinzufügen" title="Training hinzufügen">+</button>
         <button id="btn-load" type="button" aria-label="Neu laden" title="Neu laden">↻</button>
         <button id="btn-settings" type="button" aria-label="Einstellungen" title="Einstellungen">⚙︎</button>
       </div>

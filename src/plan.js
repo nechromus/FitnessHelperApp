@@ -14,7 +14,7 @@ export function categories(w, studioDays = null) {
 }
 function cats(w, studioDays) {
   if (w.type === "strength") {
-    const studio = w.source === "technogym" || (studioDays && studioDays.has((w.start_local || "").slice(0, 10)));
+    const studio = w.source === "technogym" || w.location === "studio" || (studioDays && studioDays.has((w.start_local || "").slice(0, 10)));
     return studio ? ["studio", "strength"] : ["strength"];
   }
   return ENDURANCE.has(w.type) ? ["endurance"] : [];

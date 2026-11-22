@@ -306,6 +306,19 @@ def main():
             page.click(".tabbar [data-view=plan]")
             page.wait_for_selector("#view-plan >> text=Zusätzlich")
 
+        # Training von Hand hinzufügen (+)
+        page.click("#btn-add")
+        page.click("#sheet [aria-label='Sportart'] [role=radio]:has-text('Rudern')")
+        page.fill("#add-min", "25")
+        page.fill("#add-km", "5,1".replace(",", "."))
+        page.click("#sheet [aria-label='Gefühlte Belastung'] [role=radio]:has-text('locker')")
+        page.click("#sheet button:has-text('Hinzufügen')")
+        page.wait_for_selector("#sheet", state="hidden")
+        man = [x["obj"] for x in puts if x["path"].startswith("inbox/app/manual/")]
+        assert man and man[-1]["type"] == "rowing" and man[-1]["duration_s"] == 1500 and man[-1]["distance_m"] == 5100 and man[-1]["id"].startswith("app:"), man
+        assert any(x["path"].startswith("inbox/app/assign/") and x["obj"]["workout_id"] == man[-1]["id"] for x in puts)
+        assert any(x["path"].startswith("inbox/app/feedback/") and x["obj"].get("workout_id") == man[-1]["id"] and x["obj"]["effort"] == 1 for x in puts)
+
         page.click(".tabbar [data-view=weg]")
         page.wait_for_selector("text=Wie nah bist du dran?")
         assert page.locator("#view-weg svg.spark").count() == 3
