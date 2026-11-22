@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.22-3";
-import { APP_VERSION } from "./version.js?v=2026.11.22-3";
-import { figure } from "./figures.js?v=2026.11.22-3";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.22-3";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.22-3";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.22-4";
+import { APP_VERSION } from "./version.js?v=2026.11.22-4";
+import { figure } from "./figures.js?v=2026.11.22-4";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.22-4";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.22-4";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestAssignments, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf, totalMinutes, warmupsFor, warmupIds, segmentsFor, continuationIds,
-} from "./plan.js?v=2026.11.22-3";
+} from "./plan.js?v=2026.11.22-4";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -460,7 +460,7 @@ function renderPlan() {
 
   if (m.extra.length) {
     root.append(el("h2", { class: "section-title", text: "Zusätzlich" }),
-      el("ul", { class: "plain-list" }, ...m.extra.map((w) => el("li", {}, el("button", { type: "button", class: "list-link", onclick: () => openWorkout(w) }, el("span", { text: workoutLine(w) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" }))))));
+      el("ul", { class: "plain-list" }, ...m.extra.map((w) => el("li", {}, el("button", { type: "button", class: "list-link", onclick: () => openWorkout(w) }, el("span", { text: workoutLine(w, partsOf(w)) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" }))))));
   }
   root.append(el("div", { class: "row adjust" },
     btn("Woche leichter", () => openRequest(week, "leichter")),

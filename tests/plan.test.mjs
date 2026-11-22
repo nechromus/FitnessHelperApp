@@ -192,3 +192,13 @@ test("Manuelle Zuordnung: spontane Einheit zählt für den gewählten Baustein o
   assert.equal(m.blocks.find((b) => b.block.kind === "frei").status, "open");
   assert.deepEqual(m.extra.map((w) => w.id), ["s:row"]);
 });
+
+test("Ersatz „Laufen“ bevorzugt einen Lauf, auch wenn vorher anderes Ausdauertraining war", () => {
+  const wk2 = { ...week, blocks: week.blocks.map((b) => b.kind === "kraft_b"
+    ? { ...b, substitutes: [{ id: "laufen", title: "Laufen", minutes: 40, accepts: ["endurance"], effect: "" }] } : b) };
+  const ws = [W("s:row", "rowing", "strava", "2026-11-19T12:00:00", 28), W("s:run", "run", "strava", "2026-11-22T13:20:00", 40, { distance_m: 5150 })];
+  const ch = { "w1-kraft-b": { block_id: "w1-kraft-b", substitute_id: "laufen", created_at: "x" }, "w1-frei": { block_id: "w1-frei", substitute_id: "weglassen", created_at: "x" } };
+  const wk3 = { ...wk2, blocks: wk2.blocks.map((b) => b.kind === "frei" ? { ...b, substitutes: [{ id: "weglassen", title: "w", minutes: 0, accepts: [], effect: "" }] } : b) };
+  const m = matchWeek(wk3, ws, ch);
+  assert.equal(m.blocks.find((b) => b.block.kind === "kraft_b").workout.id, "s:run");
+});

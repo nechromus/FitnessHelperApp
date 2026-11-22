@@ -138,6 +138,8 @@ export function effectiveBlock(block, choice) {
 }
 
 const ORDER = ["kraft_a", "lang", "kraft_b", "frei"];
+// Ersatz mit bestimmter Sportart: passende Einheit bevorzugen
+const SUB_TYPE = { laufen: "run", sonntag: "run", rudern: "rowing", "rudern-lang": "rowing", "rudern-arme": "rowing", "studio-ausdauer": "ride" };
 
 /**
  * Ordnet die Einheiten einer Woche den Bausteinen zu.
@@ -173,7 +175,12 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null, assig
     if (result[b.id]) continue;
     if (b.skipped) { result[b.id] = { block: b, workout: null, parts: [], status: "skipped" }; continue; }
     let cands = pool.filter((w) => !used.has(w.id) && categories(w).some((c) => b.accepts.includes(c)));
-    if (b.kind === "lang") {
+    const want = b.substitute && SUB_TYPE[b.substitute.id];
+    if (want && !b.accepts.includes("strength") && !b.accepts.includes("studio")) {
+      const cont = continuationIds(pool);
+      cands = cands.filter((w) => !cont.has(w.id))
+        .sort((x, y) => (x.type === want ? 0 : 1) - (y.type === want ? 0 : 1) || chainMinutes(y, pool) - chainMinutes(x, pool));
+    } else if (b.kind === "lang") {
       const cont = continuationIds(pool);
       cands = cands.filter((w) => !cont.has(w.id) && categories(w).includes("endurance") && chainMinutes(w, pool) >= (b.min_share || 0.75) * b.minutes)
         .sort((x, y) => chainMinutes(y, pool) - chainMinutes(x, pool));
@@ -198,7 +205,7 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null, assig
   for (const w of pool) if (extraIds.has(w.id)) for (const o of [...warmupsFor(w, pool, studioDays), ...segmentsFor(w, pool)]) used.add(o.id);
   return {
     blocks: blocks.map((b) => result[b.id]),
-    extra: pool.filter((w) => !used.has(w.id) || extraIds.has(w.id)),
+    extra: (() => { const cont = continuationIds(pool); return pool.filter((w) => (!used.has(w.id) && !cont.has(w.id)) || extraIds.has(w.id)); })(),
   };
 }
 
