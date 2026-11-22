@@ -1,12 +1,12 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.21-1";
-import { APP_VERSION } from "./version.js?v=2026.11.21-1";
-import { figure } from "./figures.js?v=2026.11.21-1";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.21-1";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.21-1";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.22-1";
+import { APP_VERSION } from "./version.js?v=2026.11.22-1";
+import { figure } from "./figures.js?v=2026.11.22-1";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.22-1";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.22-1";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf, totalMinutes, warmupsFor, warmupIds, segmentsFor, continuationIds,
-} from "./plan.js?v=2026.11.21-1";
+} from "./plan.js?v=2026.11.22-1";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -840,7 +840,7 @@ function blockDetail(mb, week, inline = false) {
   }
   const ex = sub ? sub.exercises : opt ? opt.exercises : b.exercises;
   if (ex?.length && !b.skipped) {
-    const strength = b.kind.startsWith("kraft") || !!sub?.exercises || opt?.id === "kraft";
+    const strength = sub ? sub.accepts.some((x) => x === "strength" || x === "studio") : b.kind.startsWith("kraft") || opt?.id === "kraft";
     wrap.append(el("h3", { class: "detail-h", text: strength ? "Übungen" : "Ablauf" }));
     if (inline && mb.status !== "skipped") wrap.append(el("span", { class: "muted small", text: "Antippen zum Abhaken." }));
     wrap.append(exerciseList(ex, inline && mb.status !== "skipped" ? `${today()}|${b.id}${opt ? "|" + opt.id : ""}` : null,
