@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   categories, matchWeek, evaluate, effortState, rangeState, weekFor, latestChoices, latestFeedback,
   pendingFeedback, warmupIds, continuationIds, latestAssignments, daysUntil, spontaneousFor, inboxName, effectiveBlock, totalMinutes, STATES,
+  latestMoves, applyMoves, moveTargets,
 } from "../src/plan.js";
 import { putJson, toBase64Utf8, listDir, loadJson, DEFAULTS } from "../src/data.js";
 
@@ -201,4 +202,35 @@ test("Ersatz „Laufen“ bevorzugt einen Lauf, auch wenn vorher anderes Ausdaue
   const wk3 = { ...wk2, blocks: wk2.blocks.map((b) => b.kind === "frei" ? { ...b, substitutes: [{ id: "weglassen", title: "w", minutes: 0, accepts: [], effect: "" }] } : b) };
   const m = matchWeek(wk3, ws, ch);
   assert.equal(m.blocks.find((b) => b.block.kind === "kraft_b").workout.id, "s:run");
+});
+
+test("Verschieben: neueste je Baustein, nur innerhalb der Woche, Plan bleibt unverändert", () => {
+  const plan = { weeks: [{ ...week, unavailable: [{ date: "2026-11-16", text: "frei" }],
+    blocks: week.blocks.map((b, i) => ({ ...b, day: ["2026-11-20", "2026-11-21", "2026-11-18", "2026-11-17"][i], slot: "abends" })) }] };
+  const mv = latestMoves([
+    { block_id: "w1-kraft-b", day: "2026-11-19", created_at: "2026-11-17T10:00:00Z" },
+    { block_id: "w1-kraft-b", day: "2026-11-22", created_at: "2026-11-17T11:00:00Z" },
+    { block_id: "w1-lang", day: "2026-11-30", created_at: "2026-11-17T11:00:00Z" }, // andere Woche → ignoriert
+    { block_id: "w1-frei", day: "Do", created_at: "2026-11-17T11:00:00Z" }, // kein Datum → ignoriert
+  ]);
+  assert.equal(mv["w1-kraft-b"].day, "2026-11-22");
+  assert.equal(mv["w1-frei"], undefined);
+  const p2 = applyMoves(plan, mv);
+  const kb = p2.weeks[0].blocks.find((b) => b.id === "w1-kraft-b");
+  assert.equal(kb.day, "2026-11-22");
+  assert.equal(kb.planned_day, "2026-11-18");
+  assert.equal(kb.slot, null);
+  assert.equal(p2.weeks[0].blocks.find((b) => b.id === "w1-lang").day, "2026-11-21");
+  assert.equal(plan.weeks[0].blocks[2].day, "2026-11-18"); // Original unverändert
+  // zurück auf den Plantag hebt die Verschiebung auf
+  const back = applyMoves(plan, latestMoves([{ block_id: "w1-kraft-b", day: "2026-11-18", created_at: "x" }]));
+  assert.equal(back.weeks[0].blocks[2].planned_day, undefined);
+
+  const t = moveTargets(p2.weeks[0], kb, "2026-11-17");
+  assert.equal(t.length, 7);
+  assert.deepEqual(t.map((x) => x.why), ["vorbei", null, null, null, null, null, "aktuell"]); // Mo vorbei (Sperre zählt erst ab heute)
+  assert.equal(t[1].others[0].id, "w1-frei"); // Di: schon belegt, aber erlaubt
+  assert.ok(t[2].planned); // Mi = Plantag
+  const t2 = moveTargets(p2.weeks[0], kb, "2026-11-16");
+  assert.equal(t2[0].why, "gesperrt");
 });

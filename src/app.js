@@ -1,12 +1,13 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.22-4";
-import { APP_VERSION } from "./version.js?v=2026.11.22-4";
-import { figure } from "./figures.js?v=2026.11.22-4";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.22-4";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.22-4";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.24-1";
+import { APP_VERSION } from "./version.js?v=2026.11.24-1";
+import { figure } from "./figures.js?v=2026.11.24-1";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.24-1";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.24-1";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestAssignments, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf, totalMinutes, warmupsFor, warmupIds, segmentsFor, continuationIds,
-} from "./plan.js?v=2026.11.22-4";
+  latestMoves, applyMoves, moveTargets,
+} from "./plan.js?v=2026.11.24-1";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -37,7 +38,7 @@ applyTheme(store.get(KEY_THEME));
 
 // ---------------------------------------------------------------- Zustand
 const state = {
-  plan: null, workouts: [], strength: [], feedback: [], choices: [], photos: [], outbox: [], assignments: [], readiness: null, coach: [], loaded: false,
+  plan: null, planRaw: null, moves: [], workouts: [], strength: [], feedback: [], choices: [], photos: [], outbox: [], assignments: [], readiness: null, coach: [], loaded: false,
   view: store.get(KEY_VIEW) || "heute", weekIndex: null, spontan: null,
 };
 const today = () => isoDate(new Date());
@@ -74,7 +75,7 @@ async function loadAll() {
   setStatus("Lade …");
   const dir = settings.dataDir || "data";
   try {
-    const [plan, wdoc, sdoc, fdoc, cdoc, fInbox, cInbox, pdoc, pInbox, rdoc, coachDoc, adoc, aInbox, mInbox] = await Promise.all([
+    const [plan, wdoc, sdoc, fdoc, cdoc, fInbox, cInbox, pdoc, pInbox, rdoc, coachDoc, adoc, aInbox, mInbox, mvdoc, mvInbox] = await Promise.all([
       loadJson(settings, `${dir}/plan.json`, token, null),
       loadJson(settings, `${dir}/workouts.json`, token, { workouts: [] }),
       loadJson(settings, `${dir}/strength.json`, token, { exercises: [] }),
@@ -89,10 +90,12 @@ async function loadAll() {
       loadJson(settings, `${dir}/assignments.json`, token, { assignments: [] }),
       listDir(settings, "inbox/app/assign", token),
       listDir(settings, "inbox/app/manual", token),
+      loadJson(settings, `${dir}/moves.json`, token, { moves: [] }),
+      listDir(settings, "inbox/app/moves", token),
     ]);
     // Noch nicht übernommene Einträge aus dem App-Eingang dazunehmen
     const pending = await Promise.all([...fInbox, ...cInbox].slice(0, 60).map((p) => loadJson(settings, p, token, null).catch(() => null)));
-    state.plan = plan;
+    state.planRaw = plan;
     state.readiness = rdoc;
     state.coach = coachDoc.notes || [];
     state.workouts = wdoc.workouts || [];
@@ -105,6 +108,8 @@ async function loadAll() {
     state.assignments = [...(adoc.assignments || []), ...aPending.filter((x) => x && x.workout_id && x.block_id)];
     const mPending = await Promise.all(mInbox.slice(-30).map((p) => loadJson(settings, p, token, null).catch(() => null)));
     for (const w of mPending) if (w && w.id && !state.workouts.some((x) => x.id === w.id)) state.workouts.push({ ...w, source: "app" });
+    const mvPending = await Promise.all(mvInbox.slice(-30).map((p) => loadJson(settings, p, token, null).catch(() => null)));
+    state.moves = [...(mvdoc.moves || []), ...mvPending.filter((x) => x && x.block_id && x.day)];
     mergeOutbox();
     state.loaded = true;
     setStatus(plan ? "" : "Noch kein Trainingsplan im Daten-Repo (plan.json fehlt).", plan ? "" : "warn");
@@ -139,8 +144,13 @@ function mergeOutbox() {
     if (it.path.startsWith("inbox/app/photos/") && !state.photos.some((p) => p.file === it.obj.file)) state.photos.push(it.obj);
     if (it.path.startsWith("inbox/app/assign/") && !state.assignments.some((x) => x.created_at === it.obj.created_at && x.workout_id === it.obj.workout_id)) state.assignments.push(it.obj);
     if (it.path.startsWith("inbox/app/manual/") && !state.workouts.some((x) => x.id === it.obj.id)) state.workouts.push({ ...it.obj, source: "app" });
+    if (it.path.startsWith("inbox/app/moves/") && !state.moves.some((x) => x.created_at === it.obj.created_at && x.block_id === it.obj.block_id)) state.moves.push(it.obj);
   }
+  refreshPlan();
 }
+
+/** Plan mit den verschobenen Tagen (aus der App) – alle Ansichten nutzen state.plan. */
+function refreshPlan() { state.plan = applyMoves(state.planRaw, latestMoves(state.moves)); }
 
 function sendItem(item) {
   if (item.kind === "photo") return putPhoto(getSettings(), item.path, item.bytes, getToken(), item.message, timedFetch);
@@ -278,7 +288,7 @@ function corridorRows(ev) {
 }
 
 const SHORT = { kraft_a: "Kraft A", kraft_b: "Kraft B", lang: "Lang", frei: "Nach Wahl" };
-function when(b) { return b.day ? `${fmtDay(b.day)} · ${b.slot}` : b.where; }
+function when(b) { return b.day ? `${fmtDay(b.day)}${b.slot ? " · " + b.slot : ""}${b.planned_day ? ` (verschoben, geplant ${fmtDay(b.planned_day).slice(0, 2)})` : ""}` : b.where; }
 function byDay(blocks) { return [...blocks].sort((x, y) => (x.block.day || "9").localeCompare(y.block.day || "9")); }
 
 /** Tagesleiste Mo–So mit geplanten Bausteinen und gesperrten Tagen. */
@@ -290,17 +300,18 @@ function dayStrip(week, m) {
   for (let i = 0; i < 7; i++) {
     const d = new Date(start); d.setDate(d.getDate() + i);
     const iso = isoDate(d);
-    const mb = m.blocks.find((x) => x.block.day === iso);
+    const here = m.blocks.filter((x) => x.block.day === iso);
+    const mb = here.find((x) => !isDone(x) && x.status !== "skipped") || here[0];
     const doneHere = m.blocks.find((x) => x.workout && x.workout.start_local.slice(0, 10) === iso);
     const lbl = fmtDay(iso);
     const target = mb || doneHere;
     const cls = "day" + (iso === t ? " today" : "") + (unavailable[iso] ? " off" : "");
     const cell = target
-      ? el("button", { type: "button", class: cls + " day-link", role: "listitem", "aria-label": `${lbl}: ${target.block.title} – Details`, onclick: () => openDetail(target, week) })
+      ? el("button", { type: "button", class: cls + " day-link", role: "listitem", "aria-label": `${lbl}: ${(here.length ? here : [target]).map((x) => x.block.title).join(", ")} – Details`, onclick: () => openDetail(target, week) })
       : el("div", { class: cls, role: "listitem" });
     cell.append(el("span", { class: "day-name", text: lbl.slice(0, 2) }), el("span", { class: "day-num", text: lbl.slice(3, 5) }));
     if (mb) {
-      cell.append(el("span", { class: `day-block tag-${mb.status}`, text: SHORT[mb.block.kind] + (isDone(mb) ? " ✓" : "") }));
+      for (const x of here) cell.append(el("span", { class: `day-block tag-${x.status}`, text: SHORT[x.block.kind] + (isDone(x) ? " ✓" : "") }));
     } else if (doneHere) {
       cell.append(el("span", { class: "day-block tag-done", text: SHORT[doneHere.block.kind] + " ✓" }));
     } else if (unavailable[iso]) {
@@ -449,7 +460,7 @@ function renderPlan() {
       card.append(feedbackSummary(feedbackFor(mb)), el("span", { class: "muted small", text: "Wartet auf die Aufzeichnung aus Strava bzw. Technogym." }));
     } else if (mb.status === "open") {
       card.append(el("span", { class: "plan-day", text: when(b) }), el("span", { text: b.details }),
-        el("div", { class: "row wrap" }, btn("Übungen", () => openDetail(mb, week)), btn("Fällt aus", () => openAusfall(b, week)), btn("Ersatz", () => openErsatz(b, week))));
+        el("div", { class: "row wrap" }, btn("Übungen", () => openDetail(mb, week)), btn("Verschieben", () => openMove(b, week)), btn("Fällt aus", () => openAusfall(b, week)), btn("Ersatz", () => openErsatz(b, week))));
     } else {
       card.append(el("span", { class: "muted", text: b.substitute?.effect || "" }),
         el("div", { class: "row" }, btn("Doch machen", () => chooseSubstitute(b, { id: "plan", title: "Wie geplant" }))));
@@ -1002,7 +1013,7 @@ function blockDetail(mb, week, inline = false) {
       el("span", { class: "muted small", text: "Die Aufzeichnung aus Strava bzw. Technogym kommt beim nächsten Abgleich dazu." }));
     actions.append(btn("Rückmeldung ändern", () => openFeedback({ block: b, option: opt?.id, prev: feedbackFor(mb) })));
   } else if (mb.status === "open") {
-    actions.append(btn("Fertig", () => openFeedback({ block: b, option: opt?.id }), "btn primary"), btn("Fällt aus", () => openAusfall(b, week)), btn("Ersatz", () => openErsatz(b, week)));
+    actions.append(btn("Fertig", () => openFeedback({ block: b, option: opt?.id }), "btn primary"), btn("Verschieben", () => openMove(b, week)), btn("Fällt aus", () => openAusfall(b, week)), btn("Ersatz", () => openErsatz(b, week)));
   } else {
     actions.append(btn("Doch machen", () => chooseSubstitute(b, { id: "plan", title: "Wie geplant" })));
   }
@@ -1291,7 +1302,7 @@ function openErsatz(block, week) {
   const opts = [...block.substitutes];
   if (block.substitute) opts.unshift({ id: "plan", title: "Wie geplant", effect: "Ersatz zurücknehmen", minutes: block.minutes });
   for (const s of opts) {
-    body.append(el("button", { type: "button", class: "option" + (s.recommended ? " recommended" : ""), onclick: () => chooseSubstitute(block, s) },
+    body.append(el("button", { type: "button", class: "option" + (s.recommended ? " recommended" : ""), onclick: () => s.id === "verschieben" ? openMove(block, week) : chooseSubstitute(block, s) },
       el("strong", { text: s.title }), el("span", { text: s.effect + (s.recommended ? " · Empfohlen" : "") })));
   }
   openSheet("Ersatz wählen", body);
@@ -1323,11 +1334,51 @@ function openAusfall(block, week) {
     el("label", { class: "field" }, "Kommentar", note),
     el("strong", { text: "Und jetzt?" }),
     daysLeft > 0 ? option("Später in dieser Woche nachholen", `Bleibt offen – noch ${daysLeft} ${daysLeft === 1 ? "Tag" : "Tage"} in dieser Woche.`,
-      () => chooseSubstitute(block, { id: "nachholen", title: "Nachholen" }, extra())) : null,
+      () => openMove(block, week, { ausfall: extra() })) : null,
     recommended ? option(`Stattdessen: ${recommended.title}`, recommended.effect, () => chooseSubstitute(block, recommended, extra())) : null,
     option("Diese Woche weglassen", skip.effect || "Wird nicht nachgeholt.", () => chooseSubstitute(block, skip, extra()), "option option-skip"),
     el("span", { class: "muted small", text: "Claude sieht den Grund beim nächsten Abgleich und passt die folgenden Wochen bei Bedarf an." }));
   openSheet("Fällt aus", body);
+}
+
+/** Baustein auf einen anderen Tag dieser Woche schieben. Nach „Fällt aus → Nachholen“ zusätzlich die Wahl speichern. */
+function openMove(block, week, { ausfall = null } = {}) {
+  const targets = moveTargets(week, block, today());
+  const body = el("div", { class: "sheet-content" },
+    el("p", { class: "muted", text: `${block.title} · ${block.minutes} min · jetzt ${block.day ? fmtDay(block.day) : "ohne Tag"}${block.planned_day ? ` (geplant ${fmtDay(block.planned_day)})` : ""}` }),
+    el("strong", { text: ausfall ? "Wann holst du es nach?" : "Auf welchen Tag?" }));
+  const list = el("div", { class: "move-days", role: "list" });
+  for (const t of targets) {
+    const info = t.why === "vorbei" ? "vorbei" : t.why === "gesperrt" ? ((week.unavailable || []).find((u) => u.date === t.day)?.text || "gesperrt")
+      : t.why === "aktuell" ? "jetzt hier" : t.others.length ? `dazu: ${t.others.map((o) => o.title).join(", ")}` : "frei";
+    list.append(el("button", { type: "button", role: "listitem", class: "option move-day" + (t.why === "aktuell" ? " active" : ""), disabled: !t.ok,
+      "aria-label": `${fmtDay(t.day)}: ${info}${t.planned ? ", Plantag" : ""}`,
+      onclick: () => saveMove(block, t.day, ausfall) },
+      el("strong", { text: fmtDay(t.day) + (t.planned ? " · Plantag" : "") }), el("span", { text: info })));
+  }
+  body.append(list);
+  if (ausfall) body.append(btn("Tag noch offen lassen", () => chooseSubstitute(block, { id: "nachholen", title: "Nachholen" }, ausfall), "btn full"));
+  else if (block.planned_day && targets.find((t) => t.day === block.planned_day)?.ok) body.append(btn(`Zurück auf ${fmtDay(block.planned_day)}`, () => saveMove(block, block.planned_day), "btn full"));
+  if (!targets.some((t) => t.ok)) body.append(el("p", { class: "muted", text: "In dieser Woche ist kein Tag mehr frei." }));
+  openSheet(ausfall ? "Nachholen" : "Verschieben", body);
+}
+
+async function saveMove(block, day, ausfall = null) {
+  const now = new Date().toISOString();
+  const item = { block_id: block.id, day, from_day: block.planned_day || block.day || null, created_at: now, source: "app" };
+  try {
+    sheetStatus("Speichere …");
+    if (ausfall) {
+      const choice = { block_id: block.id, substitute_id: "nachholen", ...ausfall, created_at: now, source: "app" };
+      await save(inboxName("inbox/app/choices", block.id), choice, `App: Ersatz ${block.id} → nachholen`);
+      state.choices.push(choice);
+    }
+    await save(inboxName("inbox/app/moves", block.id), item, `App: ${block.id} → ${day}`);
+    state.moves.push(item);
+    refreshPlan();
+    $("#sheet").close();
+    render();
+  } catch (e) { sheetStatus(e.message, "error"); }
 }
 
 async function chooseSubstitute(block, sub, extra = {}) {

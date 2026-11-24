@@ -182,6 +182,10 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 .option { text-align: left; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; gap: 4px; cursor: pointer; min-height: 44px; }
 .option span { font-size: .85rem; color: var(--muted); }
 .option.recommended { border: 2px solid var(--ok); }
+.move-days { display: flex; flex-direction: column; gap: 6px; }
+.move-day { flex-direction: row; justify-content: space-between; align-items: center; color: var(--text); font: inherit; }
+.move-day.active { border: 2px solid var(--accent); }
+.move-day:disabled { opacity: .45; cursor: default; }
 .field { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
 input[type=text], input[type=password], #settings input:not([type=checkbox]) {
   font: inherit; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text);

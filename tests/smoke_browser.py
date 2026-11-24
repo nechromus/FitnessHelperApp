@@ -90,6 +90,7 @@ FILES = {
     "data/readiness.json": READINESS, "data/coach.json": COACH,
     "data/plan.json": PLAN, "data/workouts.json": WORKOUTS, "data/strength.json": {"exercises": []},
     "data/feedback.json": {"feedback": []}, "data/choices.json": {"choices": []},
+    "data/moves.json": {"moves": []},
 }
 
 
@@ -280,6 +281,40 @@ def main():
         page.wait_for_selector("#view-heute .card-outbox", state="detached")
         assert len(puts) == n_before + 2 and puts[-2]["path"].endswith(".jpg") and puts[-1]["path"].endswith(".json"), puts[-3:]
         page.click(".tabbar [data-view=training]")
+
+        # Verschieben: offene Einheit auf einen anderen freien Tag der Woche
+        page.click(".tabbar [data-view=plan]")
+        page.wait_for_selector("#view-plan .block")
+        if page.locator("#view-plan .block-open button:has-text('Verschieben')").count():
+            page.locator("#view-plan .block-open button:has-text('Verschieben')").first.click()
+            page.wait_for_selector("#sheet .move-day")
+            assert page.locator("#sheet .move-day").count() == 7
+            if a.shots:
+                page.screenshot(path=f"{a.shots}/iphone-verschieben.png")
+            free = page.locator("#sheet .move-day:not([disabled])")
+            if free.count():
+                free.first.click()
+                page.wait_for_selector("#sheet", state="hidden")
+                mv = [x["obj"] for x in puts if x["path"].startswith("inbox/app/moves/")]
+                assert mv and len(mv[-1]["day"]) == 10 and mv[-1]["block_id"].startswith("w"), mv
+                page.wait_for_selector("#view-plan .plan-day:has-text('verschoben')")
+                if a.shots:
+                    page.screenshot(path=f"{a.shots}/iphone-plan-verschoben.png", full_page=True)
+            else:
+                page.click("#sheet-close")
+            # Fällt aus → Nachholen → Tag wählen (oder offen lassen)
+            if page.locator("#view-plan .block-open button:has-text('Fällt aus')").count():
+                page.locator("#view-plan .block-open button:has-text('Fällt aus')").first.click()
+                page.click("#sheet .chip-toggle:has-text('Termin')")
+                if page.locator("#sheet .option:has-text('nachholen')").count():
+                    page.click("#sheet .option:has-text('nachholen')")
+                    page.wait_for_selector("#sheet .move-day")
+                    page.click("#sheet button:has-text('Tag noch offen lassen')")
+                    page.wait_for_selector("#sheet", state="hidden")
+                    ch = [x["obj"] for x in puts if x["path"].startswith("inbox/app/choices/")]
+                    assert ch[-1]["substitute_id"] == "nachholen" and ch[-1]["reason"] == "Termin", ch
+                else:
+                    page.click("#sheet-close")
 
         # Fällt aus: Grund + weglassen
         page.click(".tabbar [data-view=plan]")

@@ -123,6 +123,48 @@ export function latestFeedback(feedback) {
   return by;
 }
 
+/** Neueste Verschiebung je Baustein (block_id → { day, created_at }). */
+export function latestMoves(moves) {
+  const by = {};
+  for (const m of moves || []) {
+    if (!m || !m.block_id || !/^\d{4}-\d{2}-\d{2}$/.test(m.day || "")) continue;
+    if (!by[m.block_id] || by[m.block_id].created_at <= m.created_at) by[m.block_id] = m;
+  }
+  return by;
+}
+
+/** Plan mit verschobenen Tagen: block.day = neuer Tag, block.planned_day = Tag laut Plan.
+ *  Nur Tage innerhalb der Woche des Bausteins zählen; der Plan selbst bleibt unverändert. */
+export function applyMoves(plan, movesByBlock) {
+  if (!plan || !plan.weeks) return plan;
+  return {
+    ...plan,
+    weeks: plan.weeks.map((w) => ({
+      ...w,
+      blocks: (w.blocks || []).map((b) => {
+        const mv = movesByBlock && movesByBlock[b.id];
+        if (!mv || mv.day < w.start || mv.day > w.end || mv.day === b.day) return b;
+        return { ...b, day: mv.day, planned_day: b.day || null, slot: null };
+      }),
+    })),
+  };
+}
+
+/** Tage, auf die ein Baustein verschoben werden kann: Mo–So der Woche, ab heute, ohne Sperrtage. */
+export function moveTargets(week, block, today) {
+  const out = [];
+  const off = new Set((week.unavailable || []).map((u) => u.date));
+  const d = new Date(week.start + "T00:00:00");
+  for (let i = 0; i < 7; i++) {
+    const iso = isoDate(d);
+    const others = (week.blocks || []).filter((b) => b.id !== block.id && b.day === iso);
+    const why = iso < today ? "vorbei" : off.has(iso) ? "gesperrt" : iso === block.day ? "aktuell" : null;
+    out.push({ day: iso, others, ok: !why, why, planned: iso === (block.planned_day || block.day) });
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
 /** Baustein mit gewähltem Ersatz: liefert Ziel-Minuten, accepts, Titel. */
 export function effectiveBlock(block, choice) {
   const sub = choice && choice.substitute_id !== "plan"
