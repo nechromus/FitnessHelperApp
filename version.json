@@ -1,4 +1,4 @@
 {
- "version": "2026.11.26-1",
- "notes": "Hochladen: bereits angekommene Fotos (Fehler 422) gelten als erledigt"
+ "version": "2026.11.26-2",
+ "notes": "Studio im Modus Elastisch: Ziel = Belastung + Elastik-Stufe"
 }

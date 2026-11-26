@@ -78,6 +78,12 @@ export function warmupIds(workouts, studioDays = null) {
   return ids;
 }
 
+/** Eingestellte Belastung am Gerät = höchstes Satzgewicht (im Modus „Elastisch“ ist das Ø-Gewicht nicht vergleichbar). */
+export function loadOf(e) {
+  const ws = (e.sets || []).map((s) => s.weight_kg).filter((x) => x);
+  return ws.length ? Math.max(...ws) : null;
+}
+
 export function minutesOf(w) {
   const s = w.type === "strength" ? (w.duration_s || w.moving_s) : (w.moving_s || w.duration_s);
   return s ? Math.round(s / 60) : 0;
@@ -291,9 +297,10 @@ export function evaluate(match, feedback, strength = [], effortLabels = []) {
   rows.push({ key: "minutes", label: "Dauer", text: `${mins} von ${mlo}–${mhi} min`, state: ms, pos: scalePos(ms, mins, mlo, mhi) });
 
   if (block.corridor.leg_extension_kg) {
-    const legs = strength.filter((e) => e.session_id === workout.id && e.exercise === "leg_extension" && !e.is_test && e.avg_weight_kg);
+    const day = workout.start_local.slice(0, 10);
+    const legs = strength.filter((e) => (e.session_id === workout.id || e.start_local.slice(0, 10) === day) && e.exercise === "leg_extension" && !e.is_test && loadOf(e));
     if (legs.length) {
-      const kg = legs[legs.length - 1].avg_weight_kg;
+      const kg = loadOf(legs[legs.length - 1]);
       const [lo, hi] = block.corridor.leg_extension_kg;
       const st = rangeState(kg, [lo, hi]);
       rows.push({ key: "leg", label: "Beinstrecker", text: `${String(kg).replace(".", ",")} kg (Ziel ${String(lo).replace(".", ",")}–${String(hi).replace(".", ",")})`, state: st, pos: scalePos(st, kg, lo, hi) });

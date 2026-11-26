@@ -1,13 +1,13 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.26-1";
-import { APP_VERSION } from "./version.js?v=2026.11.26-1";
-import { figure } from "./figures.js?v=2026.11.26-1";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.26-1";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.26-1";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.26-2";
+import { APP_VERSION } from "./version.js?v=2026.11.26-2";
+import { figure } from "./figures.js?v=2026.11.26-2";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.26-2";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.26-2";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestAssignments, latestFeedback, pendingFeedback, daysUntil,
-  spontaneousFor, inboxName, isoDate, minutesOf, totalMinutes, warmupsFor, warmupIds, segmentsFor, continuationIds,
+  spontaneousFor, inboxName, isoDate, minutesOf, loadOf, totalMinutes, warmupsFor, warmupIds, segmentsFor, continuationIds,
   latestMoves, applyMoves, moveTargets,
-} from "./plan.js?v=2026.11.26-1";
+} from "./plan.js?v=2026.11.26-2";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -488,7 +488,7 @@ function renderWeg() {
   const start = state.plan.weeks[0].start;
   const since = state.workouts.filter((w) => !w.duplicate_of && w.start_local.slice(0, 10) >= start);
   const longest = Math.max(0, ...since.filter((w) => w.type !== "strength").map(minutesOf));
-  const leg = Math.max(0, ...state.strength.filter((e) => e.start_local.slice(0, 10) >= start && e.exercise === "leg_extension" && !e.is_test).map((e) => e.avg_weight_kg || 0));
+  const leg = Math.max(0, ...state.strength.filter((e) => e.start_local.slice(0, 10) >= start && e.exercise === "leg_extension" && !e.is_test).map((e) => loadOf(e) || 0));
   const tl = el("ol", { class: "timeline" });
   for (const ms of state.plan.milestones) {
     let done = false;
@@ -878,7 +878,7 @@ function exerciseList(ex, tickKey = null, ctx = null) {
   ex.forEach((e, i) => {
     const dose = e.sets ? `${e.sets} × ${e.reps}` : e.dose || "";
     const bits = [dose];
-    if (e.weight_kg != null) bits.push(fmtKg(e.weight_kg));
+    if (e.weight_kg != null) bits.push(fmtKg(e.weight_kg) + (e.elastic ? ` + Elastik ${e.elastic}` : ""));
     if (e.rest_s) bits.push(`Pause ${e.rest_s} s`);
     const li = el("li", { class: "ex" + (ticks?.has(i) ? " ticked" : "") });
     if (ticks) {
@@ -937,10 +937,12 @@ function strengthOn(w, targets = []) {
   const ul = el("ul", { class: "mini-list" });
   for (const r of rows) {
     const g = goal[r.exercise];
+    const load = loadOf(r);
     let mark = "";
-    if (g != null && r.avg_weight_kg != null) mark = r.avg_weight_kg > g + 0.25 ? " ↑" : r.avg_weight_kg < g - 0.25 ? " ↓" : " ✓";
+    if (g != null && load != null) mark = load > g + 0.25 ? " ↑" : load < g - 0.25 ? " ↓" : " ✓";
+    const el_ = r.elastic_level ? ` + E${r.elastic_level}` : r.mode === "elastisch" ? " + E" : "";
     ul.append(el("li", {}, el("span", { text: r.exercise_name || r.exercise }),
-      el("span", { class: "muted", text: `${r.set_count || "–"} × ${r.set_count ? Math.round((r.reps_total || 0) / r.set_count) : "–"}${r.avg_weight_kg != null ? " · " + fmtKg(r.avg_weight_kg) : ""}${r.is_test ? " · Test" : ""}${mark}` })));
+      el("span", { class: "muted", text: `${r.set_count || "–"} × ${r.set_count ? Math.round((r.reps_total || 0) / r.set_count) : "–"}${load != null ? " · " + fmtKg(load) + el_ : ""}${r.is_test ? " · Test" : ""}${mark}` })));
   }
   return ul;
 }
@@ -1004,7 +1006,7 @@ function blockDetail(mb, week, inline = false) {
       el("button", { type: "button", class: "list-link", onclick: () => openWorkout(mb.workout) }, el("span", { text: workoutLine(mb.workout, mb.parts) }), el("span", { class: "chev", "aria-hidden": "true", text: "›" })),
       corridorRows(ev), el("p", { class: "advice", text: ev.advice }));
     const done = strengthOn(mb.workout, b.exercises || []);
-    if (done) wrap.append(el("span", { class: "small", text: "Am Gerät (↑ über, ✓ im, ↓ unter Zielgewicht):" }), done);
+    if (done) wrap.append(el("span", { class: "small", text: "Am Gerät eingestellte Belastung (↑ über, ✓ im, ↓ unter Ziel):" }), done);
     const f = feedbackFor(mb);
     if (f) wrap.append(feedbackSummary(f));
     else actions.append(btn("Rückmeldung geben", () => openFeedback({ workout: mb.workout, block: b }), "btn primary"));

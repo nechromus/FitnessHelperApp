@@ -29,7 +29,7 @@ def block(n, kind, title, minutes, accepts, extra=None, start=None):
     b = {"id": f"w{n}-{kind.replace('_', '-')}", "kind": kind, "title": title, "minutes": minutes,
          "day": (start + timedelta(days=DAYOFF[kind])).isoformat(), "slot": "mittags",
          "where": "irgendwo", "details": "Testdetails", "accepts": accepts,
-         "exercises": [{"name": f"Testübung {kind} 1", "key": "leg_extension", "sets": 3, "reps": "15", "weight_kg": 20.5, "rest_s": 60, "cue": "Testhinweis", "device": "leg_extension"},
+         "exercises": [{"name": f"Testübung {kind} 1", "key": "leg_extension", "sets": 3, "reps": "15", "weight_kg": 20.5, "elastic": 1, "rest_s": 60, "cue": "Testhinweis", "device": "leg_extension"},
                        {"name": f"Testübung {kind} 2", "dose": "10 min ruhig", "cue": "Testhinweis 2",
                         "guide": {"setup": "Testaufbau", "steps": ["Schritt 1", "Schritt 2"], "mistakes": ["Fehler"], "easier": "leichter",
                                   "videos": [{"title": "Testvideo", "url": "https://example.org/video", "source": "Test"},
@@ -192,7 +192,7 @@ def main():
         page.locator("#view-plan .block .card-link", has_text="Kraft B").first.click()
         page.wait_for_selector("#sheet .ex-list")
         assert page.locator("#sheet .ex").count() == 2
-        assert "20,5 kg" in page.inner_text("#sheet")
+        assert "20,5 kg + Elastik 1" in page.inner_text("#sheet")
         page.locator("#sheet details.guide summary").first.click()
         assert page.locator("#sheet details.guide[open] li", has_text="Schritt 2").count() == 1
         hrefs = page.eval_on_selector_all("#sheet details.guide a", "els => els.map(e => e.getAttribute('href'))")

@@ -82,7 +82,7 @@ test("Korridor: darüber = besser, höhere Anstrengung = darunter", () => {
 test("Bewertung einer Einheit mit Beinstrecker und Rückmeldung", () => {
   const m = matchWeek(week, workouts, {});
   const ka = m.blocks[0];
-  const strength = [{ session_id: "technogym:session-2026-11-16", exercise: "leg_extension", is_test: false, avg_weight_kg: 24 }];
+  const strength = [{ session_id: "technogym:session-2026-11-16", start_local: "2026-11-16T11:50:00", exercise: "leg_extension", is_test: false, avg_weight_kg: 30, sets: [{ reps: 15, weight_kg: 24 }] }];
   const ev = evaluate(ka, { effort: 4, knee: 0 }, strength, LABELS);
   const st = Object.fromEntries(ev.rows.map((r) => [r.key, r.state]));
   assert.equal(st.minutes, STATES.below);   // 59 von 60–80
