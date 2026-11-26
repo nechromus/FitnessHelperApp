@@ -1,13 +1,13 @@
-import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.24-1";
-import { APP_VERSION } from "./version.js?v=2026.11.24-1";
-import { figure } from "./figures.js?v=2026.11.24-1";
-import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.24-1";
-import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.24-1";
+import { DEFAULTS, TYPE_LABELS, loadJson, listDir, putJson, putPhoto, fmtDuration, fmtKm, fmtDay } from "./data.js?v=2026.11.26-1";
+import { APP_VERSION } from "./version.js?v=2026.11.26-1";
+import { figure } from "./figures.js?v=2026.11.26-1";
+import { openStore, memoryStore, flush, isNetworkError, summarize as outboxSummary } from "./outbox.js?v=2026.11.26-1";
+import { checkForUpdate, reloadUrl } from "./update.js?v=2026.11.26-1";
 import {
   STATES, weekFor, matchWeek, evaluate, latestChoices, latestAssignments, latestFeedback, pendingFeedback, daysUntil,
   spontaneousFor, inboxName, isoDate, minutesOf, totalMinutes, warmupsFor, warmupIds, segmentsFor, continuationIds,
   latestMoves, applyMoves, moveTargets,
-} from "./plan.js?v=2026.11.24-1";
+} from "./plan.js?v=2026.11.26-1";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];

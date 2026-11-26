@@ -1,4 +1,4 @@
 {
- "version": "2026.11.24-1",
- "notes": "Einheiten auf einen anderen Tag verschieben; Nachholen fragt nach dem Tag"
+ "version": "2026.11.26-1",
+ "notes": "Hochladen: bereits angekommene Fotos (Fehler 422) gelten als erledigt"
 }

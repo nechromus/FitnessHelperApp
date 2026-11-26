@@ -132,3 +132,13 @@ test("Ausgang: echte Fehler (z. B. 403) bleiben mit Vermerk liegen, Rest geht we
   assert.equal(isNetworkError(new Error("x")), false);
   assert.equal(isNetworkError(new Error("x"), false), true);
 });
+
+test("422 (Datei existiert schon nach abgebrochener Antwort) gilt als erledigt", async () => {
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const calls = [];
+  const fake = async (url, opts) => { calls.push(opts.method); return opts.method === "PUT" ? { ok: false, status: 422 } : { ok: true, status: 200 }; };
+  assert.equal(await putPhoto(DEFAULTS, "inbox/app/photos/20261126T112652_w2-kraft-a_chest_press.jpg", bytes, "t", "m", fake), true);
+  assert.deepEqual(calls, ["PUT", "GET"]);
+  const missing = async (url, opts) => (opts.method === "PUT" ? { ok: false, status: 422 } : { ok: false, status: 404 });
+  await assert.rejects(() => putPhoto(DEFAULTS, "inbox/app/photos/x_y.jpg", bytes, "t", "m", missing), /422/);
+});

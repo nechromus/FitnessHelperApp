@@ -82,12 +82,20 @@ export function toBase64Utf8(text) {
   return btoa(bin);
 }
 
+/** Gibt es die Datei schon? (z. B. Upload war erfolgreich, aber die Antwort kam bei schwachem Empfang nicht an) */
+async function fileExists(settings, path, token, fetchImpl) {
+  const res = await fetchImpl(dirUrl(settings, path), { method: "GET", headers: headers(token, false), cache: "no-store" });
+  return res.ok;
+}
+
 /** Legt eine neue JSON-Datei an (nur für inbox/app/…). */
 export async function putJson(settings, path, obj, token, message, fetchImpl = fetch) {
   if (!path.startsWith("inbox/app/")) throw new Error("Die App schreibt nur nach inbox/app/");
   const url = contentsUrl({ ...settings, path }).replace(/\?ref=.*$/, "");
   const body = { message, content: toBase64Utf8(JSON.stringify(obj, null, 1) + "\n"), branch: settings.branch || "main" };
   const res = await fetchImpl(url, { method: "PUT", headers: { ...headers(token, false), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  // 422 = Datei existiert schon: früherer Versuch kam an, nur die Antwort ging verloren → erledigt
+  if (res.status === 422 && await fileExists(settings, path, token, fetchImpl)) return true;
   if (!res.ok) throw httpError(res, "Speichern");
   return true;
 }
@@ -107,6 +115,7 @@ export async function putPhoto(settings, path, bytes, token, message, fetchImpl 
   const url = dirUrl(settings, path).replace(/\?ref=.*$/, "");
   const body = { message, content: bytesToBase64(bytes), branch: settings.branch || "main" };
   const res = await fetchImpl(url, { method: "PUT", headers: { ...headers(token, false), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (res.status === 422 && await fileExists(settings, path, token, fetchImpl)) return true;
   if (!res.ok) throw httpError(res, "Foto speichern");
   return true;
 }
