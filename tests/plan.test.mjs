@@ -234,3 +234,17 @@ test("Verschieben: neueste je Baustein, nur innerhalb der Woche, Plan bleibt unv
   const t2 = moveTargets(p2.weeks[0], kb, "2026-11-16");
   assert.equal(t2[0].why, "gesperrt");
 });
+
+test("Kraft B im Studio: zweite Studio-Einheit vor Heimtraining", () => {
+  const wk = { ...week, blocks: week.blocks.map((b) => b.kind === "kraft_b" ? { ...b, accepts: ["studio", "strength"] } : b) };
+  const ws = [
+    W("technogym:a", "strength", "technogym", "2026-11-16T12:00:00", 50),
+    W("strava:h", "strength", "strava", "2026-11-17T19:00:00", 40),
+    W("technogym:b", "strength", "technogym", "2026-11-19T12:00:00", 50),
+  ];
+  const m = matchWeek(wk, ws, {});
+  const by = Object.fromEntries(m.blocks.map((b) => [b.block.kind, b]));
+  assert.equal(by.kraft_a.workout.id, "technogym:a");
+  assert.equal(by.kraft_b.workout.id, "technogym:b");
+  assert.equal(by.frei.workout.id, "strava:h");
+});

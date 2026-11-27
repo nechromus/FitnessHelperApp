@@ -233,7 +233,7 @@ export function matchWeek(week, workouts, choices = {}, studioDays = null, assig
       cands = cands.filter((w) => !cont.has(w.id) && categories(w).includes("endurance") && chainMinutes(w, pool) >= (b.min_share || 0.75) * b.minutes)
         .sort((x, y) => chainMinutes(y, pool) - chainMinutes(x, pool));
     } else if (b.kind === "kraft_a" || b.kind === "kraft_b") {
-      const pref = b.kind === "kraft_a" ? "studio" : null;
+      const pref = b.kind === "kraft_a" || b.accepts.includes("studio") ? "studio" : null;
       cands.sort((x, y) => {
         const sx = categories(x).includes("strength") ? 0 : 1, sy = categories(y).includes("strength") ? 0 : 1;
         if (sx !== sy) return sx - sy;
